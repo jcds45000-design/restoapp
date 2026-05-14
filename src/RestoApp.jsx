@@ -1407,8 +1407,8 @@ export default function RestoApp() {
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
             {isMobile && (
-              <select value={currentUserIdx} onChange={e => { setCurrentUserIdx(+e.target.value); setSection(usersData[+e.target.value].role === "gerant" ? "dashboard" : "tasks"); }} style={{ padding: "6px 8px", borderRadius: 8, border: `1px solid ${t.border}`, fontSize: 12, fontFamily: F, background: t.surface, color: t.text, outline: "none", maxWidth: 110 }}>
-                {usersData.map((u, i) => <option key={i} value={i}>{u.name.split(" ")[0]}</option>)}
+              <select value={currentUserIdx} onChange={e => { setCurrentUserIdx(+e.target.value); setSection(usersData[+e.target.value].role === "gerant" ? "dashboard" : "tasks"); }} style={{ padding: "7px 10px", borderRadius: 10, border: `1.5px solid ${t.primary}40`, fontSize: 13, fontFamily: F, fontWeight: 600, background: t.surface, color: t.text, outline: "none", maxWidth: 150, minWidth: 110, boxShadow: "0 1px 4px rgba(0,0,0,0.08)", cursor: "pointer" }}>
+                {usersData.map((u, i) => <option key={i} value={i} style={{ color: "#000" }}>{u.name} {u.role === "gerant" ? "👑" : ""}</option>)}
               </select>
             )}
             <button style={{ position: "relative", width: 36, height: 36, borderRadius: 10, border: `1px solid ${t.border}`, background: t.surface, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: t.text }}>{I.bell}{empBadge > 0 && <span style={{ position: "absolute", top: 4, right: 4, width: 8, height: 8, borderRadius: "50%", background: t.danger }} />}</button>
