@@ -788,11 +788,14 @@ const PlanningModule = ({ t, schedule, setSchedule, pointage, isGerant, currentU
 
   // Predefined shift templates
   const shiftPresets = [
-    { label: "Coupé standard", value: "11h30-14h / 18h-22h", hours: "6.5h" },
-    { label: "Continu (ven/sam)", value: "11h30-22h", hours: "10.5h" },
-    { label: "Midi uniquement", value: "11h30-14h", hours: "2.5h" },
-    { label: "Soir uniquement", value: "18h-22h", hours: "4h" },
-    { label: "Repos", value: "repos", hours: "0h" },
+    { label: "Coupé standard", value: "11h30-14h / 18h-22h", hours: "6.5h", color: null },
+    { label: "Continu (ven/sam)", value: "11h30-22h", hours: "10.5h", color: null },
+    { label: "Midi uniquement", value: "11h30-14h", hours: "2.5h", color: null },
+    { label: "Soir uniquement", value: "18h-22h", hours: "4h", color: null },
+    { label: "Repos", value: "repos", hours: "0h", color: null },
+    { label: "🤒 Arrêt maladie", value: "maladie", hours: "0h", color: "#EF4444" },
+    { label: "🌴 Congés payés", value: "conges", hours: "0h", color: "#3B82F6" },
+    { label: "⚠️ Absence injustifiée", value: "absence", hours: "0h", color: "#F97316" },
   ];
 
   const updateShift = (empName, date, shiftValue) => {
@@ -875,19 +878,25 @@ const PlanningModule = ({ t, schedule, setSchedule, pointage, isGerant, currentU
                 {days.map(d => {
                   const shift = empSchedule[d];
                   const isRest = !shift || shift === "repos";
+                  const isAbsence = ["maladie", "conges", "absence"].includes(shift);
+                  const absenceColors = { maladie: "#EF4444", conges: "#3B82F6", absence: "#F97316" };
+                  const absenceLabels = { maladie: "🤒 Maladie", conges: "🌴 Congés", absence: "⚠️ Absent" };
                   const h = calcHours(shift);
                   weekTotal += h;
                   const isToday = d === TODAY;
                   const ptg = (pointage[emp.name] || {})[d];
                   const realH = ptg ? calcHours(ptg) : null;
+                  const absColor = isAbsence ? absenceColors[shift] : null;
                   return (
                     <td key={d}
                       onClick={() => isGerant && openShiftModal(emp.name, d)}
-                      style={{ padding: "10px 8px", textAlign: "center", borderBottom: `1px solid ${t.border}`, background: isToday ? t.primary + "06" : "transparent", verticalAlign: "top", cursor: isGerant ? "pointer" : "default", transition: "background 0.15s" }}
-                      onMouseEnter={e => { if (isGerant) e.currentTarget.style.background = t.primary + "12"; }}
-                      onMouseLeave={e => { e.currentTarget.style.background = isToday ? t.primary + "06" : "transparent"; }}
+                      style={{ padding: "10px 8px", textAlign: "center", borderBottom: `1px solid ${t.border}`, background: isAbsence ? absColor + "12" : isToday ? t.primary + "06" : "transparent", verticalAlign: "top", cursor: isGerant ? "pointer" : "default", transition: "background 0.15s" }}
+                      onMouseEnter={e => { if (isGerant) e.currentTarget.style.background = isAbsence ? absColor + "20" : t.primary + "12"; }}
+                      onMouseLeave={e => { e.currentTarget.style.background = isAbsence ? absColor + "12" : isToday ? t.primary + "06" : "transparent"; }}
                     >
-                      {isRest ? (
+                      {isAbsence ? (
+                        <span style={{ fontSize: 12, fontWeight: 700, color: absColor }}>{absenceLabels[shift]}</span>
+                      ) : isRest ? (
                         <span style={{ fontSize: 12, color: isGerant ? t.primary+"88" : t.textMuted, fontStyle: "italic" }}>{isGerant ? "+ Ajouter" : "Repos"}</span>
                       ) : (
                         <div>
