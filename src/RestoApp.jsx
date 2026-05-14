@@ -1256,7 +1256,7 @@ export default function RestoApp() {
           const gerant = prev.find(u => u.role === 'gerant') || prev[0];
           return [gerant, ...eData.map((e, i) => ({
             id: i + 1, _uuid: e.id,
-            name: e.name, role: 'employe',
+            name: e.name, role: e.role === 'gerant' ? 'gerant' : 'employe',
             initials: e.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase(),
             poste: e.role, tauxH: 12, heuresHebdo: 35,
             tel: e.phone || '', email: e.email || '',
