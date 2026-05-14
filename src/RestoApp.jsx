@@ -800,6 +800,7 @@ const PlanningModule = ({ t, schedule, setSchedule, pointage, isGerant, currentU
       ...prev,
       [empName]: { ...(prev[empName] || {}), [date]: shiftValue }
     }));
+    supabase.from('schedule').upsert({ employee_name: empName, date, shift: shiftValue, updated_at: new Date().toISOString() }, { onConflict: 'employee_name,date' }).then(() => {});
   };
 
   const duplicateWeek = () => {
@@ -887,7 +888,7 @@ const PlanningModule = ({ t, schedule, setSchedule, pointage, isGerant, currentU
                       onMouseLeave={e => { e.currentTarget.style.background = isToday ? t.primary + "06" : "transparent"; }}
                     >
                       {isRest ? (
-                        <span style={{ fontSize: 12, color: t.textMuted, fontStyle: "italic" }}>Repos</span>
+                        <span style={{ fontSize: 12, color: isGerant ? t.primary+"88" : t.textMuted, fontStyle: "italic" }}>{isGerant ? "+ Ajouter" : "Repos"}</span>
                       ) : (
                         <div>
                           <div style={{ fontSize: 12, fontWeight: 600, color: t.text, lineHeight: 1.4 }}>
@@ -1103,6 +1104,7 @@ const PlanningModule = ({ t, schedule, setSchedule, pointage, isGerant, currentU
         </div>
       )}
 
+      {planView === "week" && isGerant && <div style={{ fontSize: 12, color: t.textMuted, fontFamily: F, marginBottom: 10, display: "flex", alignItems: "center", gap: 6 }}><span style={{ color: t.primary }}>💡</span> Cliquez sur une cellule pour assigner ou modifier un horaire</div>}
       {planView === "week" && <WeekView />}
       {planView === "month" && <MonthView />}
       {planView === "hours" && <HoursView />}
@@ -1208,7 +1210,7 @@ export default function RestoApp() {
   const [themeKey, setThemeKey] = useState("kimiko");
   const [showThemePicker, setShowThemePicker] = useState(false);
   const [tasks, setTasks] = useState(initialTasks);
-  const [schedule, setSchedule] = useState(initialSchedule);
+  const [schedule, setSchedule] = useState({});
   const [products, setProducts] = useState(initialProducts);
   const [sorties, setSorties] = useState(initialSorties);
   const [showModal, setShowModal] = useState(false);
@@ -1248,6 +1250,16 @@ export default function RestoApp() {
           seuil: parseFloat(p.seuil) || 0,
           seuilOrange: parseFloat(p.seuil_orange) || 0,
         })));
+      }
+      // Planning
+      const { data: sData } = await supabase.from('schedule').select('*');
+      if (sData?.length) {
+        const sched = {};
+        sData.forEach(s => {
+          if (!sched[s.employee_name]) sched[s.employee_name] = {};
+          sched[s.employee_name][s.date] = s.shift;
+        });
+        setSchedule(sched);
       }
       // Employés
       const { data: eData } = await supabase.from('employees').select('*').order('name');
