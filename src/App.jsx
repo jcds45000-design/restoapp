@@ -1,7 +1,1 @@
-import RestoApp from './RestoApp'
-
-function App() {
-  return <RestoApp />
-}
-
-export default App
+export { default } from './RestoApp';

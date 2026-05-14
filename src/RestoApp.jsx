@@ -1,14 +1,17 @@
 import { useState, useRef, useMemo, useEffect } from "react";
+import { supabase } from './lib/supabase';
 
 // ═══════════════════════════════════════
 // ─── HELPERS ───
 // ═══════════════════════════════════════
-const TODAY = "2026-05-08";
-const WEEK_START = "2026-05-04"; // Lundi de la semaine courante
+const TODAY = new Date().toISOString().slice(0, 10);
+const getMonday = (d) => { const dt = new Date(d); const day = dt.getDay(); const diff = dt.getDate() - day + (day === 0 ? -6 : 1); dt.setDate(diff); return dt.toISOString().slice(0, 10); };
+const WEEK_START = getMonday(TODAY);
+const TODAY_LABEL = new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).replace(/^\w/, c => c.toUpperCase());
 
 // ─── IMAGE BANNIÈRE DASHBOARD ───
 // 👉 Change cette URL pour modifier l'image du dashboard
-const BANNER_IMAGE = "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6a/Korean_corn_dog.jpg/640px-Korean_corn_dog.jpg";
+const BANNER_IMAGE = "/hero.png";
 const fmt = (d) => { const dt=new Date(d+"T00:00:00"); const j=["Dim","Lun","Mar","Mer","Jeu","Ven","Sam"]; const m=["jan","fév","mar","avr","mai","juin","juil","août","sep","oct","nov","déc"]; return `${j[dt.getDay()]} ${dt.getDate()} ${m[dt.getMonth()]}`; };
 const fmtShort = (d) => { const dt=new Date(d+"T00:00:00"); return `${dt.getDate()}/${dt.getMonth()+1}`; };
 const addDays = (d,n) => { const dt=new Date(d+"T00:00:00"); dt.setDate(dt.getDate()+n); return dt.toISOString().slice(0,10); };
@@ -83,13 +86,7 @@ const initialTasks = [
   { id:17, title:"Vérifier stocks week-end", assignee:"Mina", category:"Stock", priority:"haute", status:"todo", dueDate:"2026-05-10", completedBy:null },
 ];
 
-const todayStaff = [
-  { name:"Yuna", role:"Cuisine", shift:"10h–15h / 18h–22h", status:"present" },
-  { name:"Lucas", role:"Caisse", shift:"11h–15h / 18h–22h", status:"present" },
-  { name:"Mina", role:"Cuisine", shift:"11h–15h / 18h–21h", status:"present" },
-  { name:"Théo", role:"Salle", shift:"11h30–15h", status:"late" },
-  { name:"Sofia", role:"Plonge", shift:"—", status:"absent" },
-];
+// todayStaff est calculé dynamiquement depuis employees (voir RestoApp)
 const stockCategories = ["Viandes & Poissons","Sauces & Condiments","Légumes & Frais","Sec & Féculents","Boissons","Emballages & Consommables"];
 const initialProducts = [
   { id:1, name:"Poulet (cuisses désossées)", category:"Viandes & Poissons", qty:3.5, unit:"kg", seuil:5, seuilOrange:8 },
@@ -137,7 +134,7 @@ const weeklyCA = [{day:"Lun",value:1240},{day:"Mar",value:1580},{day:"Mer",value
 // ─── THEMES ───
 // ═══════════════════════════════════════
 const themes = {
-  kimiko: { name:"Kimiko", primary:"#E63946", primaryHover:"#CF2F3D", accent:"#0A0A0A", bg:"#F7F6F3", surface:"#FFFFFF", surfaceAlt:"#FAF9F7", text:"#1A1A1A", textMuted:"#6B6B6B", border:"#E8E5DF", success:"#2D8A4E", warning:"#D4870E", danger:"#E63946", sidebar:"#0A0A0A", sidebarText:"#F5F1E8", sidebarAccent:"#E63946" },
+  kimiko: { name:"Kimiko", primary:"#FF6B2B", primaryHover:"#E55A1E", accent:"#FF4757", bg:"#FBF8F5", surface:"#FFFFFF", surfaceAlt:"#FFF4EF", text:"#1A1008", textMuted:"#8A7A6E", border:"#F0E6DE", success:"#2ED573", warning:"#FFD93D", danger:"#FF4757", sidebar:"#1A0E08", sidebarText:"#F5EDE6", sidebarAccent:"#FF6B2B" },
   ocean: { name:"Océan", primary:"#0077B6", primaryHover:"#005F8A", accent:"#023E58", bg:"#F4F7FA", surface:"#FFFFFF", surfaceAlt:"#F0F4F8", text:"#1A2332", textMuted:"#5A6B7F", border:"#DAE2EB", success:"#2D8A4E", warning:"#D4870E", danger:"#D44040", sidebar:"#023E58", sidebarText:"#E1EBF5", sidebarAccent:"#00B4D8" },
   forest: { name:"Forêt", primary:"#2D6A4F", primaryHover:"#1E4D38", accent:"#1B4332", bg:"#F5F7F5", surface:"#FFFFFF", surfaceAlt:"#F0F5F1", text:"#1A2A1E", textMuted:"#5A6B5F", border:"#D4E2D7", success:"#2D8A4E", warning:"#D4870E", danger:"#D44040", sidebar:"#1B4332", sidebarText:"#D8F0E0", sidebarAccent:"#52B788" },
   neutral: { name:"Neutre Pro", primary:"#4A5568", primaryHover:"#2D3748", accent:"#1A202C", bg:"#F7FAFC", surface:"#FFFFFF", surfaceAlt:"#F0F2F5", text:"#1A202C", textMuted:"#718096", border:"#E2E8F0", success:"#2D8A4E", warning:"#D4870E", danger:"#D44040", sidebar:"#1A202C", sidebarText:"#E2E8F0", sidebarAccent:"#63B3ED" },
@@ -241,10 +238,14 @@ const StocksModule = ({ t, products, setProducts, sorties, setSorties, isGerant,
   const alertProducts = products.filter(p => p.qty <= p.seuil);
   const shoppingList = alertProducts.map(p => ({ ...p, toOrder: Math.ceil((p.seuilOrange - p.qty) * 1.2) }));
 
-  const addProduct = () => {
+  const addProduct = async () => {
     if (!npName.trim() || !npQty) return;
-    setProducts(prev => [...prev, { id: pidRef.current++, name: npName, category: npCat, qty: parseFloat(npQty), unit: npUnit, seuil: parseFloat(npSeuil) || 1, seuilOrange: parseFloat(npSeuil) * 2 || 2 }]);
+    const tmpId = pidRef.current++;
+    const np = { id: tmpId, name: npName, category: npCat, qty: parseFloat(npQty), unit: npUnit, seuil: parseFloat(npSeuil) || 1, seuilOrange: parseFloat(npSeuil) * 2 || 2 };
+    setProducts(prev => [...prev, np]);
     setNpName(""); setNpQty(""); setNpSeuil(""); setShowAddProduct(false);
+    const { data } = await supabase.from('products').insert({ name: np.name, category: np.category, unit: np.unit, qty: np.qty, seuil: np.seuil, seuil_orange: np.seuilOrange, stock_current: np.qty, stock_min: np.seuil }).select().single();
+    if (data) setProducts(prev => prev.map(p => p.id === tmpId ? { ...p, _uuid: data.id } : p));
   };
 
   const submitSortie = () => {
@@ -257,7 +258,12 @@ const StocksModule = ({ t, products, setProducts, sorties, setSorties, isGerant,
     const sortie = sorties.find(s => s.id === sid);
     if (!sortie) return;
     setSorties(prev => prev.map(s => s.id === sid ? { ...s, status: "validated" } : s));
-    setProducts(prev => prev.map(p => p.id === sortie.productId ? { ...p, qty: Math.max(0, Math.round((p.qty - sortie.qty) * 100) / 100) } : p));
+    setProducts(prev => prev.map(p => {
+      if (p.id !== sortie.productId) return p;
+      const newQty = Math.max(0, Math.round((p.qty - sortie.qty) * 100) / 100);
+      if (p._uuid) supabase.from('products').update({ qty: newQty, stock_current: newQty }).eq('id', p._uuid).then(() => {});
+      return { ...p, qty: newQty };
+    }));
   };
 
   const rejectSortie = (sid) => {
@@ -266,7 +272,12 @@ const StocksModule = ({ t, products, setProducts, sorties, setSorties, isGerant,
 
   const updateQty = (pid) => {
     if (editQty === "") return;
-    setProducts(prev => prev.map(p => p.id === pid ? { ...p, qty: parseFloat(editQty) } : p));
+    setProducts(prev => prev.map(p => {
+      if (p.id !== pid) return p;
+      const newQty = parseFloat(editQty);
+      if (p._uuid) supabase.from('products').update({ qty: newQty, stock_current: newQty }).eq('id', p._uuid).then(({ error }) => { if (error) alert('Erreur Supabase: ' + error.message); });
+      return { ...p, qty: newQty };
+    }));
     setEditProduct(null); setEditQty("");
   };
 
@@ -279,7 +290,12 @@ const StocksModule = ({ t, products, setProducts, sorties, setSorties, isGerant,
 
   const saveEditProduct = () => {
     if (!editingProduct || !epName.trim()) return;
-    setProducts(prev => prev.map(p => p.id === editingProduct.id ? { ...p, name: epName, category: epCat, unit: epUnit, seuil: parseFloat(epSeuil) || 1, seuilOrange: parseFloat(epSeuilOrange) || 2 } : p));
+    setProducts(prev => prev.map(p => {
+      if (p.id !== editingProduct.id) return p;
+      const updated = { ...p, name: epName, category: epCat, unit: epUnit, seuil: parseFloat(epSeuil) || 1, seuilOrange: parseFloat(epSeuilOrange) || 2 };
+      if (p._uuid) supabase.from('products').update({ name: epName, category: epCat, unit: epUnit, seuil: updated.seuil, seuil_orange: updated.seuilOrange }).eq('id', p._uuid).then(() => {});
+      return updated;
+    }));
     setEditingProduct(null);
   };
 
@@ -1195,16 +1211,97 @@ export default function RestoApp() {
   const t = themes[themeKey];
   const nid = useRef(20);
 
+  // ─── CHARGEMENT SUPABASE AU DÉMARRAGE ───
+  useEffect(() => {
+    const pmap = { high: 'haute', medium: 'moyenne', low: 'basse' };
+    const loadData = async () => {
+      // Tâches
+      const { data: tData } = await supabase.from('tasks').select('*').order('created_at');
+      if (tData?.length) {
+        setTasks(tData.map(t => ({
+          id: t.id,
+          title: t.title || '',
+          assignee: t.assignee_name || '',
+          category: t.category || 'Autre',
+          priority: pmap[t.priority] || 'moyenne',
+          status: t.status || 'todo',
+          dueDate: t.due_date || TODAY,
+          completedBy: t.completed_by_name || null,
+        })));
+      }
+      // Produits
+      const { data: pData } = await supabase.from('products').select('*').order('name');
+      if (pData?.length) {
+        setProducts(pData.map((p, i) => ({
+          id: i + 1, _uuid: p.id,
+          name: p.name, category: p.category, unit: p.unit,
+          qty: parseFloat(p.qty) || 0,
+          seuil: parseFloat(p.seuil) || 0,
+          seuilOrange: parseFloat(p.seuil_orange) || 0,
+        })));
+      }
+      // Employés
+      const { data: eData } = await supabase.from('employees').select('*').order('name');
+      if (eData?.length) {
+        setUsersData(prev => {
+          const gerant = prev.find(u => u.role === 'gerant') || prev[0];
+          return [gerant, ...eData.map((e, i) => ({
+            id: i + 1, _uuid: e.id,
+            name: e.name, role: 'employe',
+            initials: e.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase(),
+            poste: e.role, tauxH: 12, heuresHebdo: 35,
+            tel: e.phone || '', email: e.email || '',
+            dateEntree: e.created_at?.slice(0, 10) || '', contrat: 'CDI', dateFin: '',
+          }))];
+        });
+      }
+    };
+    loadData();
+  }, []);
+
+  const todayStaff = useMemo(() => employees.map(emp => {
+    const sched = schedule[emp.name]?.[TODAY];
+    return {
+      name: emp.name,
+      role: emp.poste || emp.role,
+      shift: sched && sched !== 'repos' ? sched : '—',
+      status: !sched || sched === 'repos' ? 'absent' : 'present'
+    };
+  }), [employees, schedule]);
   const effectiveSection = (!isGerant && section === "dashboard") ? "tasks" : section;
   const effectiveDate = isGerant ? viewDate : TODAY;
   const overdueTasks = useMemo(() => tasks.filter(isOverdue), [tasks]);
   const todayTasks = useMemo(() => tasks.filter(tk => tk.dueDate === TODAY), [tasks]);
   const viewTasks = useMemo(() => { if (effectiveDate === "overdue") return overdueTasks; return tasks.filter(tk => tk.dueDate === effectiveDate); }, [tasks, effectiveDate, overdueTasks]);
 
-  const addTask = (d) => { setTasks(p => [...p, { id: nid.current++, ...d, status: "todo", completedBy: null }]); setShowModal(false); };
-  const toggleTask = (id) => setTasks(p => p.map(tk => { if (tk.id !== id) return tk; if (tk.status === "done") return { ...tk, status: "todo", completedBy: null }; return { ...tk, status: "done", completedBy: currentUser.name === "Jean Claude" ? tk.assignee : currentUser.name }; }));
-  const moveTask = (id, s) => setTasks(p => p.map(tk => { if (tk.id !== id) return tk; return { ...tk, status: s, completedBy: s === "done" ? (currentUser.name === "Jean Claude" ? tk.assignee : currentUser.name) : null }; }));
-  const delTask = (id) => { setTasks(p => p.filter(tk => tk.id !== id)); setEditingTask(null); };
+  const _pmap = { haute: 'high', moyenne: 'medium', basse: 'low' };
+  const addTask = async (d) => {
+    const tmpId = nid.current++;
+    setTasks(p => [...p, { id: tmpId, ...d, status: "todo", completedBy: null }]);
+    setShowModal(false);
+    const { data } = await supabase.from('tasks').insert({
+      title: d.title, assignee_name: d.assignee, category: d.category,
+      priority: _pmap[d.priority] || 'medium', status: 'todo', due_date: d.dueDate,
+    }).select().single();
+    if (data) setTasks(p => p.map(tk => tk.id === tmpId ? { ...tk, id: data.id } : tk));
+  };
+  const toggleTask = (id) => setTasks(p => p.map(tk => {
+    if (tk.id !== id) return tk;
+    const ns = tk.status === "done" ? "todo" : "done";
+    const cb = ns === "done" ? (currentUser.name === "Jean Claude" ? tk.assignee : currentUser.name) : null;
+    supabase.from('tasks').update({ status: ns, completed_by_name: cb, updated_at: new Date().toISOString() }).eq('id', id).then(() => {});
+    return { ...tk, status: ns, completedBy: cb };
+  }));
+  const moveTask = (id, s) => setTasks(p => p.map(tk => {
+    if (tk.id !== id) return tk;
+    const cb = s === "done" ? (currentUser.name === "Jean Claude" ? tk.assignee : currentUser.name) : null;
+    supabase.from('tasks').update({ status: s, completed_by_name: cb, updated_at: new Date().toISOString() }).eq('id', id).then(() => {});
+    return { ...tk, status: s, completedBy: cb };
+  }));
+  const delTask = (id) => {
+    setTasks(p => p.filter(tk => tk.id !== id)); setEditingTask(null);
+    supabase.from('tasks').delete().eq('id', id).then(() => {});
+  };
   const [editingTask, setEditingTask] = useState(null);
   const [etTitle, setEtTitle] = useState("");
   const [etAssignee, setEtAssignee] = useState("");
@@ -1213,7 +1310,12 @@ export default function RestoApp() {
   const [etDueDate, setEtDueDate] = useState("");
   const [etConfirmDel, setEtConfirmDel] = useState(false);
   const openEditTask = (tk) => { setEtTitle(tk.title); setEtAssignee(tk.assignee); setEtCategory(tk.category); setEtPriority(tk.priority); setEtDueDate(tk.dueDate); setEtConfirmDel(false); setEditingTask(tk); };
-  const saveEditTask = () => { if (!editingTask || !etTitle.trim()) return; setTasks(p => p.map(tk => tk.id === editingTask.id ? { ...tk, title: etTitle, assignee: etAssignee, category: etCategory, priority: etPriority, dueDate: etDueDate } : tk)); setEditingTask(null); };
+  const saveEditTask = () => {
+    if (!editingTask || !etTitle.trim()) return;
+    setTasks(p => p.map(tk => tk.id === editingTask.id ? { ...tk, title: etTitle, assignee: etAssignee, category: etCategory, priority: etPriority, dueDate: etDueDate } : tk));
+    setEditingTask(null);
+    supabase.from('tasks').update({ title: etTitle, assignee_name: etAssignee, category: etCategory, priority: _pmap[etPriority] || 'medium', due_date: etDueDate, updated_at: new Date().toISOString() }).eq('id', editingTask.id).then(() => {});
+  };
 
   const empBadge = isGerant ? todayTasks.filter(tk => tk.status !== "done").length + overdueTasks.length : todayTasks.filter(tk => tk.assignee === currentUser.name && tk.status !== "done").length;
   const stockAlertCount = products.filter(p => p.qty <= p.seuil).length;
@@ -1292,7 +1394,7 @@ export default function RestoApp() {
             <h1 style={{ fontSize: isMobile ? 18 : 24, fontWeight: 700, margin: 0, letterSpacing: -0.5 }}>
               {effectiveSection === "planning" ? "Planning & RH" : effectiveSection === "equipe" ? "Mon équipe" : effectiveSection === "stocks" ? "Stocks" : effectiveSection === "tasks" ? (isGerant ? (showHistory ? "Historique" : viewDate === "overdue" ? "En retard" : "Tâches") : `Bonjour, ${currentUser.name} 👋`) : (isMobile ? "Kimiko" : `Bonjour, ${currentUser.name} 👋`)}
             </h1>
-            {!isMobile && <p style={{ fontSize: 14, color: t.textMuted, margin: "4px 0 0" }}>Jeudi 8 mai 2026 — Bon service ! 🔥 {!isGerant && <span style={{ marginLeft: 8, fontWeight: 600, color: t.primary }}>Vue employé</span>}</p>}
+            {!isMobile && <p style={{ fontSize: 14, color: t.textMuted, margin: "4px 0 0" }}>{TODAY_LABEL} — Bon service ! 🔥 {!isGerant && <span style={{ marginLeft: 8, fontWeight: 600, color: t.primary }}>Vue employé</span>}</p>}
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
             {isMobile && (
@@ -1343,7 +1445,7 @@ export default function RestoApp() {
                 <div style={{ fontSize: isMobile ? 24 : 32, fontWeight: 700, color: "#fff", letterSpacing: -0.5, lineHeight: 1.1, fontFamily: F }}>Kimiko</div>
                 <div style={{ fontSize: isMobile ? 13 : 15, color: "#ffffff99", marginTop: 4, fontFamily: F }}>Street food coréenne · Orléans</div>
                 <div style={{ fontSize: isMobile ? 13 : 15, color: "#fff", marginTop: isMobile ? 10 : 14, fontWeight: 500, fontFamily: F }}>Bonjour, {currentUser.name} 👋</div>
-                <div style={{ fontSize: isMobile ? 11 : 13, color: "#ffffff77", marginTop: 2, fontFamily: F }}>Jeudi 8 mai 2026 — Bon service ! 🔥</div>
+                <div style={{ fontSize: isMobile ? 11 : 13, color: "#ffffff77", marginTop: 2, fontFamily: F }}>{TODAY_LABEL} — Bon service ! 🔥</div>
               </div>
               <img src={BANNER_IMAGE} alt="Kimiko corn dog" style={{ width: isMobile ? 70 : 100, height: isMobile ? 70 : 100, borderRadius: 14, objectFit: "cover", flexShrink: 0, boxShadow: "0 4px 16px rgba(0,0,0,0.3)" }} />
               <div style={{ position: "absolute", top: -20, right: -20, width: 120, height: 120, borderRadius: "50%", background: t.primary + "15" }} />

@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap');
+
 * {
   margin: 0;
   padding: 0;
@@ -5,6 +7,58 @@
 }
 
 body {
-  font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #FF6B2B55; border-radius: 8px; }
+::-webkit-scrollbar-thumb:hover { background: #FF6B2B99; }
+
+/* Transitions globales */
+button { transition: all 0.15s ease; }
+button:active { transform: scale(0.97); }
+
+/* Sélection de texte */
+::selection { background: #FF6B2B33; color: #FF6B2B; }
+
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(-12px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.fade-in { animation: fadeIn 0.25s ease forwards; }
+.slide-in { animation: slideIn 0.2s ease forwards; }
+
+/* Cards hover effect */
+.hover-card {
+  transition: box-shadow 0.2s ease, transform 0.2s ease !important;
+}
+.hover-card:hover {
+  box-shadow: 0 8px 32px rgba(255, 107, 43, 0.12) !important;
+  transform: translateY(-1px);
+}
+
+/* Input focus */
+input:focus, select:focus, textarea:focus {
+  outline: none !important;
+  border-color: #FF6B2B !important;
+  box-shadow: 0 0 0 3px #FF6B2B18 !important;
+}
+
+/* Gradient orange pour les accents */
+.gradient-orange {
+  background: linear-gradient(135deg, #FF6B2B, #FF4757);
 }
