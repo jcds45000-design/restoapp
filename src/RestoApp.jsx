@@ -597,20 +597,29 @@ const EquipeModule = ({ t, employees, usersData, setUsersData, isMobile }) => {
   const saveEdit = () => {
     if (!editingEmp || !eName.trim()) return;
     const initials = eName.trim().split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
-    setUsersData(prev => prev.map(u => u.id === editingEmp.id ? { ...u, name: eName, initials, poste: ePoste, tauxH: parseFloat(eTaux) || 0, heuresHebdo: parseFloat(eHeures) || 35, tel: eTel, email: eEmail, dateEntree: eDate, contrat: eContrat, dateFin: eContrat === "CDD" ? eDateFin : "" } : u));
+    const updated = { name: eName, initials, poste: ePoste, tauxH: parseFloat(eTaux) || 0, heuresHebdo: parseFloat(eHeures) || 35, tel: eTel, email: eEmail, dateEntree: eDate, contrat: eContrat, dateFin: eContrat === "CDD" ? eDateFin : "" };
+    setUsersData(prev => prev.map(u => u.id === editingEmp.id ? { ...u, ...updated } : u));
+    if (editingEmp._uuid) {
+      supabase.from('employees').update({ name: eName, role: ePoste, phone: eTel, email: eEmail }).eq('id', editingEmp._uuid).then(({ error }) => { if (error) alert('Erreur Supabase: ' + error.message); });
+    }
     setEditingEmp(null);
   };
 
   const deleteEmp = () => {
     if (!editingEmp) return;
     setUsersData(prev => prev.filter(u => u.id !== editingEmp.id));
+    if (editingEmp._uuid) {
+      supabase.from('employees').delete().eq('id', editingEmp._uuid).then(({ error }) => { if (error) alert('Erreur Supabase: ' + error.message); });
+    }
     setEditingEmp(null);
   };
 
-  const addEmp = () => {
+  const addEmp = async () => {
     if (!aName.trim()) return;
     const initials = aName.trim().split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
-    setUsersData(prev => [...prev, { id: eidRef.current++, name: aName, role: "employe", initials, poste: aPoste, tauxH: parseFloat(aTaux) || 11.27, heuresHebdo: parseFloat(aHeures) || 35, tel: aTel, email: aEmail, dateEntree: aDate, contrat: aContrat, dateFin: aContrat === "CDD" ? aDateFin : "" }]);
+    const { data: newEmp, error } = await supabase.from('employees').insert({ name: aName, role: aPoste, phone: aTel, email: aEmail, active: true }).select().single();
+    if (error) { alert('Erreur Supabase: ' + error.message); return; }
+    setUsersData(prev => [...prev, { id: eidRef.current++, _uuid: newEmp?.id, name: aName, role: "employe", initials, poste: aPoste, tauxH: parseFloat(aTaux) || 11.27, heuresHebdo: parseFloat(aHeures) || 35, tel: aTel, email: aEmail, dateEntree: aDate, contrat: aContrat, dateFin: aContrat === "CDD" ? aDateFin : "" }]);
     setAName(""); setAPoste("Cuisine"); setATaux(""); setAHeures("35"); setATel(""); setAEmail(""); setADate(TODAY); setAContrat("CDI"); setADateFin("");
     setShowAddModal(false);
   };
