@@ -66,6 +66,88 @@ const initialPointage = {
 const categoryList = ["Service","Cuisine","Nettoyage","Stock","Admin","Autre"];
 const priorityList = ["haute","moyenne","basse"];
 
+// ─── TEMPLATE TÂCHES JOURNALIÈRES KIMIKO ───
+// créneau: "ouverture" = employés qui commencent avant 14h
+//          "fermeture" = employés qui finissent après 21h
+//          "service"   = tous les présents
+const TASK_TEMPLATES = [
+  // 🌅 OUVERTURE
+  { title:"Allumer caisse", category:"Admin", priority:"haute", creneau:"ouverture" },
+  { title:"Allumer lumière / clim / chauffage", category:"Admin", priority:"haute", creneau:"ouverture" },
+  { title:"Allumer machine à glaçon", category:"Admin", priority:"haute", creneau:"ouverture" },
+  { title:"Allumer friteuse", category:"Cuisine", priority:"haute", creneau:"ouverture" },
+  { title:"Vérifier rouleau TPE chaque matin", category:"Admin", priority:"haute", creneau:"ouverture" },
+  { title:"Poser les bippeurs sur imprimante", category:"Admin", priority:"moyenne", creneau:"ouverture" },
+  { title:"Nettoyer écran borne et écran caisse", category:"Nettoyage", priority:"moyenne", creneau:"ouverture" },
+  { title:"Sortir les sauces", category:"Cuisine", priority:"haute", creneau:"ouverture" },
+  { title:"Faire des étiquettes boîte corndog", category:"Admin", priority:"moyenne", creneau:"ouverture" },
+  { title:"Vérifier stock gyoza / œufs / roquette / choux / tomates / poulet à bento / oignons frits / ciboulette / sésame", category:"Stock", priority:"haute", creneau:"ouverture" },
+  { title:"Couper le poulet et mariner (15min max pour 10kg)", category:"Cuisine", priority:"haute", creneau:"ouverture" },
+  { title:"Faire poulet à bento farine œuf chapelure", category:"Cuisine", priority:"haute", creneau:"ouverture" },
+  { title:"Vérifier quantité riz", category:"Stock", priority:"haute", creneau:"ouverture" },
+  // 🍽️ SERVICE
+  { title:"Dresser plateau / sac emporter (sauce, boisson, serviette, flyer)", category:"Service", priority:"haute", creneau:"service" },
+  { title:"Mettre les plats dans chaque commande", category:"Service", priority:"haute", creneau:"service" },
+  { title:"Faire les boissons", category:"Service", priority:"haute", creneau:"service" },
+  { title:"Appeler les clients avec bippeur", category:"Service", priority:"haute", creneau:"service" },
+  { title:"Annoncer les nouvelles commandes", category:"Service", priority:"haute", creneau:"service" },
+  { title:"Vaisselle pot de sauce, verre, fourchette, cuillère — toutes les 1h", category:"Nettoyage", priority:"moyenne", creneau:"service" },
+  { title:"Nettoyer les toilettes toutes les 1h", category:"Nettoyage", priority:"moyenne", creneau:"service" },
+  { title:"Nettoyage des tables salle", category:"Nettoyage", priority:"moyenne", creneau:"service" },
+  { title:"Nettoyer plateaux", category:"Nettoyage", priority:"basse", creneau:"service" },
+  { title:"Lavage de sol / surface / étagères — toutes les 30 min", category:"Nettoyage", priority:"moyenne", creneau:"service" },
+  { title:"Faire vaisselle toutes les 30 min", category:"Nettoyage", priority:"moyenne", creneau:"service" },
+  { title:"Vérifier stock sacs / serviettes / soda / fourchettes / agrafes / lait / bonbons / sirops / purées / matcha / pistache", category:"Stock", priority:"haute", creneau:"service" },
+  { title:"Remplir frigo boisson", category:"Stock", priority:"moyenne", creneau:"service" },
+  { title:"Changer les poubelles", category:"Nettoyage", priority:"moyenne", creneau:"service" },
+  { title:"Remplir sauces", category:"Cuisine", priority:"haute", creneau:"service" },
+  { title:"Vérifier quantité patates douces / frites / pommes rissolées", category:"Stock", priority:"haute", creneau:"service" },
+  { title:"Lancer boneless wings", category:"Cuisine", priority:"haute", creneau:"service" },
+  { title:"Vérifier quantité boneless et wings", category:"Stock", priority:"haute", creneau:"service" },
+  { title:"Lancer les corndogs", category:"Cuisine", priority:"haute", creneau:"service" },
+  { title:"Vérifier quantité corndog — bien fermer sac congélation", category:"Stock", priority:"haute", creneau:"service" },
+  { title:"Vérifier pâte corndog", category:"Cuisine", priority:"haute", creneau:"service" },
+  { title:"Refaire cuire des œufs", category:"Cuisine", priority:"haute", creneau:"service" },
+  { title:"Refaire crème fraîche", category:"Cuisine", priority:"moyenne", creneau:"service" },
+  { title:"Faire des frites / patates douces régulièrement", category:"Cuisine", priority:"haute", creneau:"service" },
+  { title:"S'occuper des DLC", category:"Stock", priority:"haute", creneau:"service" },
+  { title:"Faire le riz", category:"Cuisine", priority:"haute", creneau:"service" },
+  { title:"Vérifier les emballages (stock cuisine + cave)", category:"Stock", priority:"moyenne", creneau:"service" },
+  { title:"Nettoyer écran KDS", category:"Nettoyage", priority:"basse", creneau:"service" },
+  // 🌙 FERMETURE
+  { title:"Fermer caisse, vérifier espèces et mettre dans enveloppe", category:"Admin", priority:"haute", creneau:"fermeture" },
+  { title:"Éteindre caisse (mardi et jeudi)", category:"Admin", priority:"haute", creneau:"fermeture" },
+  { title:"Éteindre machine à glaçon", category:"Admin", priority:"haute", creneau:"fermeture" },
+  { title:"Éteindre friteuse", category:"Cuisine", priority:"haute", creneau:"fermeture" },
+  { title:"Ranger les sauces", category:"Cuisine", priority:"haute", creneau:"fermeture" },
+  { title:"Ranger ciboulette / choux / œufs / tomates / gyoza / poulet à bento / sauces", category:"Cuisine", priority:"haute", creneau:"fermeture" },
+  { title:"Nettoyage sol, pieds de table, tables", category:"Nettoyage", priority:"haute", creneau:"fermeture" },
+  { title:"Nettoyer mur", category:"Nettoyage", priority:"moyenne", creneau:"fermeture" },
+  { title:"Nettoyer escalier", category:"Nettoyage", priority:"moyenne", creneau:"fermeture" },
+  { title:"Nettoyer frigo intérieur et extérieur", category:"Nettoyage", priority:"haute", creneau:"fermeture" },
+  { title:"Nettoyer pot de sauce et remplir", category:"Nettoyage", priority:"moyenne", creneau:"fermeture" },
+  { title:"Remonter 3 farines 1 sucre chaque soir", category:"Stock", priority:"haute", creneau:"fermeture" },
+];
+
+// Détermine si un employé travaille à l'ouverture (commence avant 14h)
+const travailleOuverture = (shift) => {
+  if (!shift || shift === 'repos' || ['maladie','conges','absence'].includes(shift)) return false;
+  const m = shift.match(/(\d+)h/);
+  return m && parseInt(m[1]) < 14;
+};
+// Détermine si un employé travaille à la fermeture (finit après 21h)
+const travailleFermeture = (shift) => {
+  if (!shift || shift === 'repos' || ['maladie','conges','absence'].includes(shift)) return false;
+  const parts = shift.split(' / ');
+  const last = parts[parts.length - 1];
+  const m = last.match(/-(\d+)h/);
+  return m && parseInt(m[1]) >= 21;
+};
+// Détermine si un employé est présent (pas absent/repos)
+const estPresent = (shift) => {
+  return shift && shift !== 'repos' && !['maladie','conges','absence'].includes(shift);
+};
+
 const initialTasks = [
   { id:1, title:"Inventaire chambre froide", assignee:"Mina", category:"Stock", priority:"haute", status:"done", dueDate:"2026-05-07", completedBy:"Mina" },
   { id:2, title:"Nettoyer le sol cuisine", assignee:"Théo", category:"Nettoyage", priority:"moyenne", status:"done", dueDate:"2026-05-07", completedBy:"Théo" },
@@ -1223,6 +1305,77 @@ export default function RestoApp() {
   const [products, setProducts] = useState(initialProducts);
   const [sorties, setSorties] = useState(initialSorties);
   const [showModal, setShowModal] = useState(false);
+  const [showTemplateModal, setShowTemplateModal] = useState(false);
+  const [templateDate, setTemplateDate] = useState(TODAY);
+  const [templateAssignments, setTemplateAssignments] = useState([]);
+
+  // Calcule la distribution des tâches selon les horaires du jour
+  const computeTemplateAssignments = (date) => {
+    const allUsers = usersData.filter(u => u.name !== "Jean Claude");
+    const empShifts = allUsers.map(u => ({ name: u.name, shift: (schedule[u.name] || {})[date] || null }));
+    const presents = empShifts.filter(e => estPresent(e.shift));
+    if (!presents.length) return [];
+    const ouverture = presents.filter(e => travailleOuverture(e.shift));
+    const fermeture = presents.filter(e => travailleFermeture(e.shift));
+    const assignments = [];
+    const pools = { ouverture, fermeture, service: presents };
+    let idxO = 0, idxF = 0, idxS = 0;
+    TASK_TEMPLATES.forEach(task => {
+      let pool = pools[task.creneau];
+      if (!pool.length) pool = presents;
+      let idx = task.creneau === 'ouverture' ? idxO : task.creneau === 'fermeture' ? idxF : idxS;
+      const emp = pool[idx % pool.length];
+      if (task.creneau === 'ouverture') idxO++;
+      else if (task.creneau === 'fermeture') idxF++;
+      else idxS++;
+      assignments.push({ ...task, assignee: emp.name });
+    });
+    return assignments;
+  };
+
+  const openTemplateModal = () => {
+    setTemplateAssignments(computeTemplateAssignments(TODAY));
+    setTemplateDate(TODAY);
+    setShowTemplateModal(true);
+  };
+
+  const shuffleTemplateAssignments = () => {
+    const allUsers = usersData.filter(u => u.name !== "Jean Claude");
+    const empShifts = allUsers.map(u => ({ name: u.name, shift: (schedule[u.name] || {})[templateDate] || null }));
+    const presents = empShifts.filter(e => estPresent(e.shift));
+    if (!presents.length) return;
+    // Mélanger aléatoirement les assignations en respectant les créneaux
+    const shuffled = presents.sort(() => Math.random() - 0.5);
+    const ouverture = presents.filter(e => travailleOuverture(e.shift)).sort(() => Math.random() - 0.5);
+    const fermeture = presents.filter(e => travailleFermeture(e.shift)).sort(() => Math.random() - 0.5);
+    let idxO = 0, idxF = 0, idxS = 0;
+    setTemplateAssignments(templateAssignments.map(task => {
+      let pool = task.creneau === 'ouverture' ? ouverture : task.creneau === 'fermeture' ? fermeture : shuffled;
+      if (!pool.length) pool = shuffled;
+      let idx = task.creneau === 'ouverture' ? idxO : task.creneau === 'fermeture' ? idxF : idxS;
+      const emp = pool[idx % pool.length];
+      if (task.creneau === 'ouverture') idxO++; else if (task.creneau === 'fermeture') idxF++; else idxS++;
+      return { ...task, assignee: emp.name };
+    }));
+  };
+
+  const loadTemplate = async () => {
+    const pmap = { haute: 'high', moyenne: 'medium', basse: 'low' };
+    const inserts = templateAssignments.map(t => ({
+      title: t.title, assignee_name: t.assignee, category: t.category,
+      priority: pmap[t.priority] || 'medium', status: 'todo',
+      due_date: templateDate, completed_by_name: null,
+    }));
+    const { data } = await supabase.from('tasks').insert(inserts).select();
+    if (data) {
+      setTasks(prev => [...prev, ...data.map(t => ({
+        id: t.id, title: t.title, assignee: t.assignee_name, category: t.category,
+        priority: t.priority === 'high' ? 'haute' : t.priority === 'low' ? 'basse' : 'moyenne',
+        status: 'todo', dueDate: t.due_date, completedBy: null,
+      }))]);
+    }
+    setShowTemplateModal(false);
+  };
   const [taskView, setTaskView] = useState("checklist");
   const [viewDate, setViewDate] = useState(TODAY);
   const [showHistory, setShowHistory] = useState(false);
@@ -1442,7 +1595,10 @@ export default function RestoApp() {
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
               {isGerant ? <DateNav viewDate={viewDate} setViewDate={(d) => { setViewDate(d); setShowHistory(false); }} t={t} showHistory={showHistory} setShowHistory={setShowHistory} overdueCount={overdueTasks.length} /> : <div style={{ fontSize: 15, fontWeight: 600, fontFamily: F }}>Tâches du jour — {fmt(TODAY)}</div>}
-              {isGerant && !showHistory && <button onClick={() => setShowModal(true)} style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 20px", borderRadius: 10, border: "none", background: t.primary, color: "#fff", fontWeight: 600, fontSize: 14, cursor: "pointer", fontFamily: F }} onMouseEnter={e => e.currentTarget.style.background = t.primaryHover} onMouseLeave={e => e.currentTarget.style.background = t.primary}>{I.plus} Nouvelle tâche</button>}
+              {isGerant && !showHistory && <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+                <button onClick={openTemplateModal} style={{ display:"flex", alignItems:"center", gap:8, padding:"10px 16px", borderRadius:10, border:`1.5px solid ${t.accent||'#CA8A04'}`, background:"transparent", color:t.accent||'#CA8A04', fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:F }}>📋 Template du jour</button>
+                <button onClick={() => setShowModal(true)} style={{ display:"flex", alignItems:"center", gap:8, padding:"10px 20px", borderRadius:10, border:"none", background:t.primary, color:"#fff", fontWeight:600, fontSize:14, cursor:"pointer", fontFamily:F }} onMouseEnter={e => e.currentTarget.style.background = t.primaryHover} onMouseLeave={e => e.currentTarget.style.background = t.primary}>{I.plus} Nouvelle tâche</button>
+              </div>}
             </div>
             {showHistory && isGerant ? <HistoryView tasks={tasks} t={t} /> : (<>
               <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 16, flexWrap: "wrap" }}>
@@ -1545,6 +1701,81 @@ export default function RestoApp() {
       )}
 
       {showModal && <TaskModal onClose={() => setShowModal(false)} onSave={addTask} t={t} defaultDate={viewDate !== "overdue" ? viewDate : TODAY} employees={employees} />}
+
+      {/* ── MODAL TEMPLATE DU JOUR ── */}
+      {showTemplateModal && (
+        <div style={{ position:"fixed", inset:0, background:"rgba(26,10,0,0.55)", display:"flex", alignItems:"flex-end", justifyContent:"center", zIndex:1000 }} onClick={() => setShowTemplateModal(false)}>
+          <div style={{ background:t.surface, borderRadius:"24px 24px 0 0", width:"100%", maxWidth:560, maxHeight:"88vh", overflowY:"auto", paddingBottom:32, boxShadow:"0 -8px 40px rgba(0,0,0,0.2)" }} onClick={e => e.stopPropagation()}>
+            {/* Handle */}
+            <div style={{ width:36, height:4, background:t.border, borderRadius:2, margin:"12px auto 0" }} />
+            {/* Top gradient bar */}
+            <div style={{ height:3, background:"linear-gradient(90deg,#DC2626,#CA8A04)", borderRadius:"0 0 3px 3px", margin:"0 24px" }} />
+            {/* Header */}
+            <div style={{ padding:"20px 24px 0", display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
+              <div>
+                <div style={{ fontSize:20, fontWeight:700, color:t.text, fontFamily:F, letterSpacing:-0.01 }}>Template journalier Kimiko</div>
+                <div style={{ fontSize:13, color:t.textMuted, fontFamily:F, marginTop:4 }}>
+                  {templateAssignments.length} tâches · {[...new Set(templateAssignments.map(a=>a.assignee))].length} employés présents
+                </div>
+              </div>
+              <button onClick={() => setShowTemplateModal(false)} style={{ background:"none", border:`1px solid ${t.border}`, borderRadius:"50%", width:32, height:32, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", color:t.textMuted, fontSize:16 }}>✕</button>
+            </div>
+            {/* Stats */}
+            <div style={{ display:"flex", gap:10, padding:"16px 24px" }}>
+              {[
+                { label:"Ouverture 🌅", val: templateAssignments.filter(a=>a.creneau==='ouverture').length, color:"#F97316" },
+                { label:"Service 🍽️",   val: templateAssignments.filter(a=>a.creneau==='service').length,   color:t.primary },
+                { label:"Fermeture 🌙", val: templateAssignments.filter(a=>a.creneau==='fermeture').length, color:"#6366F1" },
+              ].map(s => (
+                <div key={s.label} style={{ flex:1, background:t.bg, border:`1px solid ${t.border}`, borderRadius:12, padding:"10px 12px", textAlign:"center" }}>
+                  <div style={{ fontSize:20, fontWeight:700, color:s.color, fontFamily:F }}>{s.val}</div>
+                  <div style={{ fontSize:10, color:t.textMuted, fontFamily:F, marginTop:2 }}>{s.label}</div>
+                </div>
+              ))}
+            </div>
+            {/* Date */}
+            <div style={{ padding:"0 24px 16px" }}>
+              <div style={{ fontSize:11, fontWeight:700, letterSpacing:"0.1em", textTransform:"uppercase", color:t.textMuted, marginBottom:8, fontFamily:F }}>Date d'assignation</div>
+              <input type="date" value={templateDate} onChange={e => { setTemplateDate(e.target.value); setTemplateAssignments(computeTemplateAssignments(e.target.value)); }}
+                style={{ width:"100%", padding:"10px 14px", borderRadius:10, border:`1.5px solid ${t.border}`, fontFamily:F, fontSize:14, color:t.text, background:t.surface, outline:"none" }} />
+            </div>
+            {/* Warning si personne au planning */}
+            {templateAssignments.length === 0 && (
+              <div style={{ margin:"0 24px 16px", padding:"12px 16px", borderRadius:10, background:"#FEF3C7", border:"1px solid #FDE68A", fontSize:13, color:"#854D0E", fontFamily:F }}>
+                ⚠️ Aucun employé n'a de shift planifié ce jour-là. Vérifie le planning d'abord.
+              </div>
+            )}
+            {/* Task list */}
+            {["ouverture","service","fermeture"].map(creneau => {
+              const tasks = templateAssignments.filter(a => a.creneau === creneau);
+              if (!tasks.length) return null;
+              const labels = { ouverture:"🌅 Ouverture", service:"🍽️ Service", fermeture:"🌙 Fermeture" };
+              const colors = { ouverture:"#F97316", service:t.primary, fermeture:"#6366F1" };
+              return (
+                <div key={creneau} style={{ padding:"0 24px", marginBottom:8 }}>
+                  <div style={{ fontSize:11, fontWeight:700, letterSpacing:"0.1em", textTransform:"uppercase", color:colors[creneau], marginBottom:8, fontFamily:F }}>{labels[creneau]} · {tasks.length} tâches</div>
+                  {tasks.map((task, i) => (
+                    <div key={i} style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 14px", borderRadius:10, border:`1px solid ${t.border}`, background:t.surface, marginBottom:6, borderLeft:`3px solid ${colors[creneau]}` }}>
+                      <div style={{ flex:1 }}>
+                        <div style={{ fontSize:13, fontWeight:600, color:t.text, fontFamily:F }}>{task.title}</div>
+                        <div style={{ fontSize:11, color:t.textMuted, fontFamily:F, marginTop:2 }}>{task.category} · {task.priority}</div>
+                      </div>
+                      <div style={{ fontSize:12, fontWeight:700, color:t.text, fontFamily:F, flexShrink:0 }}>{task.assignee}</div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })}
+            {/* Actions */}
+            <div style={{ padding:"16px 24px 0", display:"flex", flexDirection:"column", gap:10 }}>
+              <button onClick={shuffleTemplateAssignments} style={{ padding:"10px", borderRadius:10, border:`1.5px solid ${t.primary}`, background:"transparent", color:t.primary, fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:F }}>🔀 Répartir aléatoirement</button>
+              <button onClick={loadTemplate} disabled={!templateAssignments.length} style={{ padding:"14px", borderRadius:10, border:"none", background:templateAssignments.length ? t.primary : t.border, color:templateAssignments.length ? "#fff" : t.textMuted, fontSize:15, fontWeight:700, cursor:templateAssignments.length ? "pointer" : "default", fontFamily:F, boxShadow:templateAssignments.length ? "0 4px 14px rgba(220,38,38,0.35)" : "none" }}>
+                📋 Charger {templateAssignments.length} tâches
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Edit task modal */}
       {editingTask && (
