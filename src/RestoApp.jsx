@@ -14,7 +14,7 @@ const TODAY_LABEL = new Date().toLocaleDateString('fr-FR', { weekday: 'long', da
 const BANNER_IMAGE = "/hero.png";
 const fmt = (d) => { const dt=new Date(d+"T00:00:00"); const j=["Dim","Lun","Mar","Mer","Jeu","Ven","Sam"]; const m=["jan","fév","mar","avr","mai","juin","juil","août","sep","oct","nov","déc"]; return `${j[dt.getDay()]} ${dt.getDate()} ${m[dt.getMonth()]}`; };
 const fmtShort = (d) => { const dt=new Date(d+"T00:00:00"); return `${dt.getDate()}/${dt.getMonth()+1}`; };
-const addDays = (d,n) => { const dt=new Date(d+"T00:00:00"); dt.setDate(dt.getDate()+n); return dt.toISOString().slice(0,10); };
+const addDays = (d,n) => { const dt=new Date(d+"T00:00:00"); dt.setDate(dt.getDate()+n); return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`; };
 const getWeekDays = (start) => Array.from({length:7},(_,i) => addDays(start,i));
 const getDayName = (d) => ["Dim","Lun","Mar","Mer","Jeu","Ven","Sam"][new Date(d+"T00:00:00").getDay()];
 const isOverdue = (tk) => tk.status!=="done" && tk.dueDate<TODAY;
