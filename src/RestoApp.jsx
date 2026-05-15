@@ -1295,7 +1295,7 @@ export default function RestoApp() {
   const [usersData, setUsersData] = useState(initialUsersData);
   const currentUser = usersData[currentUserIdx] || usersData[0];
   const isGerant = currentUser.role === "gerant";
-  const employees = useMemo(() => usersData.filter(u => u.role === "employe"), [usersData]);
+  const employees = useMemo(() => usersData.filter(u => u.name !== "Jean Claude"), [usersData]);
 
   const [section, setSection] = useState("dashboard");
   const [themeKey, setThemeKey] = useState("kimiko");
