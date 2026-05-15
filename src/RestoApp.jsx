@@ -1308,6 +1308,7 @@ export default function RestoApp() {
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [templateDate, setTemplateDate] = useState(TODAY);
   const [templateAssignments, setTemplateAssignments] = useState([]);
+  const [editingTemplateIdx, setEditingTemplateIdx] = useState(null);
 
   // Calcule la distribution des tâches selon les horaires du jour
   const computeTemplateAssignments = (date) => {
@@ -1339,6 +1340,7 @@ export default function RestoApp() {
     const d = viewDate || TODAY;
     setTemplateAssignments(computeTemplateAssignments(d));
     setTemplateDate(d);
+    setEditingTemplateIdx(null);
     setShowTemplateModal(true);
   };
 
@@ -1739,7 +1741,7 @@ export default function RestoApp() {
             {/* Date */}
             <div style={{ padding:"0 24px 16px" }}>
               <div style={{ fontSize:11, fontWeight:700, letterSpacing:"0.1em", textTransform:"uppercase", color:t.textMuted, marginBottom:8, fontFamily:F }}>Date d'assignation</div>
-              <input type="date" value={templateDate} onChange={e => { setTemplateDate(e.target.value); setTemplateAssignments(computeTemplateAssignments(e.target.value)); }}
+              <input type="date" value={templateDate} onChange={e => { setTemplateDate(e.target.value); setTemplateAssignments(computeTemplateAssignments(e.target.value)); setEditingTemplateIdx(null); }}
                 style={{ width:"100%", padding:"10px 14px", borderRadius:10, border:`1.5px solid ${t.border}`, fontFamily:F, fontSize:14, color:t.text, background:t.surface, outline:"none" }} />
             </div>
             {/* Info planning */}
@@ -1750,22 +1752,40 @@ export default function RestoApp() {
             )}
             {/* Task list */}
             {["ouverture","service","fermeture"].map(creneau => {
-              const tasks = templateAssignments.filter(a => a.creneau === creneau);
-              if (!tasks.length) return null;
+              const creneauIdxs = templateAssignments.reduce((acc, a, i) => { if (a.creneau === creneau) acc.push(i); return acc; }, []);
+              if (!creneauIdxs.length) return null;
               const labels = { ouverture:"🌅 Ouverture", service:"🍽️ Service", fermeture:"🌙 Fermeture" };
               const colors = { ouverture:"#F97316", service:t.primary, fermeture:"#6366F1" };
+              const empOptions = usersData.filter(u => u.name !== "Jean Claude");
               return (
                 <div key={creneau} style={{ padding:"0 24px", marginBottom:8 }}>
-                  <div style={{ fontSize:11, fontWeight:700, letterSpacing:"0.1em", textTransform:"uppercase", color:colors[creneau], marginBottom:8, fontFamily:F }}>{labels[creneau]} · {tasks.length} tâches</div>
-                  {tasks.map((task, i) => (
-                    <div key={i} style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 14px", borderRadius:10, border:`1px solid ${t.border}`, background:t.surface, marginBottom:6, borderLeft:`3px solid ${colors[creneau]}` }}>
-                      <div style={{ flex:1 }}>
-                        <div style={{ fontSize:13, fontWeight:600, color:t.text, fontFamily:F }}>{task.title}</div>
-                        <div style={{ fontSize:11, color:t.textMuted, fontFamily:F, marginTop:2 }}>{task.category} · {task.priority}</div>
+                  <div style={{ fontSize:11, fontWeight:700, letterSpacing:"0.1em", textTransform:"uppercase", color:colors[creneau], marginBottom:8, fontFamily:F }}>{labels[creneau]} · {creneauIdxs.length} tâches</div>
+                  {creneauIdxs.map(globalIdx => {
+                    const task = templateAssignments[globalIdx];
+                    const isEditing = editingTemplateIdx === globalIdx;
+                    return (
+                      <div key={globalIdx} style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 14px", borderRadius:10, border:`1px solid ${isEditing ? colors[creneau] : t.border}`, background:isEditing ? t.bg : t.surface, marginBottom:6, borderLeft:`3px solid ${colors[creneau]}`, transition:"all 0.15s" }}>
+                        <div style={{ flex:1, minWidth:0 }}>
+                          <div style={{ fontSize:13, fontWeight:600, color:t.text, fontFamily:F, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{task.title}</div>
+                          <div style={{ fontSize:11, color:t.textMuted, fontFamily:F, marginTop:2 }}>{task.category} · {task.priority}</div>
+                        </div>
+                        {isEditing ? (
+                          <select autoFocus value={task.assignee}
+                            onChange={e => { setTemplateAssignments(prev => prev.map((a, i) => i === globalIdx ? {...a, assignee: e.target.value} : a)); setEditingTemplateIdx(null); }}
+                            onBlur={() => setEditingTemplateIdx(null)}
+                            style={{ fontSize:13, fontWeight:700, padding:"4px 8px", borderRadius:8, border:`1.5px solid ${colors[creneau]}`, fontFamily:F, color:t.text, background:t.surface, outline:"none", cursor:"pointer" }}>
+                            {empOptions.map(u => <option key={u.name} value={u.name}>{u.name}</option>)}
+                          </select>
+                        ) : (
+                          <button onClick={() => setEditingTemplateIdx(globalIdx)}
+                            title="Changer l'assigné"
+                            style={{ fontSize:12, fontWeight:700, color:t.text, fontFamily:F, flexShrink:0, background:"none", border:`1px dashed ${t.border}`, borderRadius:8, padding:"4px 10px", cursor:"pointer", display:"flex", alignItems:"center", gap:4 }}>
+                            {task.assignee} <span style={{ fontSize:10, color:t.textMuted }}>✏️</span>
+                          </button>
+                        )}
                       </div>
-                      <div style={{ fontSize:12, fontWeight:700, color:t.text, fontFamily:F, flexShrink:0 }}>{task.assignee}</div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               );
             })}
