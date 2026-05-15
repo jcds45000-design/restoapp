@@ -1384,6 +1384,7 @@ export default function RestoApp() {
   const [taskView, setTaskView] = useState("checklist");
   const [viewDate, setViewDate] = useState(TODAY);
   const [showHistory, setShowHistory] = useState(false);
+  const [gerantMyTasks, setGerantMyTasks] = useState(false); // toggle gérant : toutes vs mes tâches
   const [fA, setFA] = useState("");
   const [fC, setFC] = useState("");
   const t = themes[themeKey];
@@ -1460,7 +1461,12 @@ export default function RestoApp() {
   const effectiveDate = isGerant ? viewDate : TODAY;
   const overdueTasks = useMemo(() => tasks.filter(isOverdue), [tasks]);
   const todayTasks = useMemo(() => tasks.filter(tk => tk.dueDate === TODAY), [tasks]);
-  const viewTasks = useMemo(() => { if (effectiveDate === "overdue") return overdueTasks; return tasks.filter(tk => tk.dueDate === effectiveDate); }, [tasks, effectiveDate, overdueTasks]);
+  const viewTasks = useMemo(() => {
+    if (effectiveDate === "overdue") return overdueTasks.filter(tk => !isGerant || !gerantMyTasks || tk.assignee === currentUser.name);
+    const base = tasks.filter(tk => tk.dueDate === effectiveDate);
+    if (isGerant && gerantMyTasks) return base.filter(tk => tk.assignee === currentUser.name);
+    return base;
+  }, [tasks, effectiveDate, overdueTasks, isGerant, gerantMyTasks, currentUser.name]);
 
   const _pmap = { haute: 'high', moyenne: 'medium', basse: 'low' };
   const addTask = async (d) => {
@@ -1547,7 +1553,7 @@ export default function RestoApp() {
           </div>
           <div style={{ padding: "12px 14px", borderBottom: `1px solid ${t.sidebarText}15` }}>
             <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: 1, color: t.sidebarText + "66", marginBottom: 6, fontFamily: F }}>Connecté en tant que</div>
-            <select value={currentUserIdx} onChange={e => { setCurrentUserIdx(+e.target.value); setSection(usersData[+e.target.value].role === "gerant" ? "dashboard" : "tasks"); setViewDate(TODAY); setShowHistory(false); }}
+            <select value={currentUserIdx} onChange={e => { setCurrentUserIdx(+e.target.value); setSection(usersData[+e.target.value].role === "gerant" ? "dashboard" : "tasks"); setViewDate(TODAY); setShowHistory(false); setGerantMyTasks(false); }}
               style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: `1px solid ${t.sidebarText}33`, background: t.sidebarText + "11", color: t.sidebarText, fontSize: 13, fontWeight: 600, fontFamily: F, cursor: "pointer", outline: "none" }}>
               {usersData.map((u, i) => <option key={i} value={i} style={{ color: "#000" }}>{u.name} ({u.role === "gerant" ? "Gérant" : "Employé"})</option>)}
             </select>
@@ -1600,7 +1606,12 @@ export default function RestoApp() {
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
               {isGerant ? <DateNav viewDate={viewDate} setViewDate={(d) => { setViewDate(d); setShowHistory(false); }} t={t} showHistory={showHistory} setShowHistory={setShowHistory} overdueCount={overdueTasks.length} /> : <div style={{ fontSize: 15, fontWeight: 600, fontFamily: F }}>Tâches du jour — {fmt(TODAY)}</div>}
-              {isGerant && !showHistory && <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+              {isGerant && !showHistory && <div style={{ display:"flex", gap:8, flexWrap:"wrap", alignItems:"center" }}>
+                {/* Toggle Toutes / Mes tâches */}
+                <div style={{ display:"flex", background:t.surfaceAlt, borderRadius:8, border:`1px solid ${t.border}`, overflow:"hidden" }}>
+                  <button onClick={() => setGerantMyTasks(false)} style={{ padding:"8px 14px", border:"none", cursor:"pointer", fontSize:13, fontWeight:600, fontFamily:F, background:!gerantMyTasks ? t.primary : "transparent", color:!gerantMyTasks ? "#fff" : t.textMuted, transition:"all 0.15s" }}>Toutes</button>
+                  <button onClick={() => setGerantMyTasks(true)} style={{ padding:"8px 14px", border:"none", cursor:"pointer", fontSize:13, fontWeight:600, fontFamily:F, background:gerantMyTasks ? t.primary : "transparent", color:gerantMyTasks ? "#fff" : t.textMuted, transition:"all 0.15s" }}>Mes tâches</button>
+                </div>
                 <button onClick={openTemplateModal} style={{ display:"flex", alignItems:"center", gap:8, padding:"10px 16px", borderRadius:10, border:`1.5px solid ${t.accent||'#CA8A04'}`, background:"transparent", color:t.accent||'#CA8A04', fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:F }}>📋 Template du jour</button>
                 <button onClick={() => setShowModal(true)} style={{ display:"flex", alignItems:"center", gap:8, padding:"10px 20px", borderRadius:10, border:"none", background:t.primary, color:"#fff", fontWeight:600, fontSize:14, cursor:"pointer", fontFamily:F }} onMouseEnter={e => e.currentTarget.style.background = t.primaryHover} onMouseLeave={e => e.currentTarget.style.background = t.primary}>{I.plus} Nouvelle tâche</button>
               </div>}
