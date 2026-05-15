@@ -4,8 +4,8 @@ import { supabase } from './lib/supabase';
 // ═══════════════════════════════════════
 // ─── HELPERS ───
 // ═══════════════════════════════════════
-const TODAY = new Date().toISOString().slice(0, 10);
-const getMonday = (d) => { const dt = new Date(d); const day = dt.getDay(); const diff = dt.getDate() - day + (day === 0 ? -6 : 1); dt.setDate(diff); return dt.toISOString().slice(0, 10); };
+const TODAY = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })();
+const getMonday = (d) => { const dt = new Date(d+"T00:00:00"); const day = dt.getDay(); const diff = dt.getDate() - day + (day === 0 ? -6 : 1); dt.setDate(diff); return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`; };
 const WEEK_START = getMonday(TODAY);
 const TODAY_LABEL = new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).replace(/^\w/, c => c.toUpperCase());
 
@@ -1313,8 +1313,10 @@ export default function RestoApp() {
   const computeTemplateAssignments = (date) => {
     const allUsers = usersData.filter(u => u.name !== "Jean Claude");
     const empShifts = allUsers.map(u => ({ name: u.name, shift: (schedule[u.name] || {})[date] || null }));
-    const presents = empShifts.filter(e => estPresent(e.shift));
-    if (!presents.length) return [];
+    let presents = empShifts.filter(e => estPresent(e.shift));
+    // Fallback : si aucun planning pour ce jour, on prend tous les employés actifs
+    const noPlanning = presents.length === 0;
+    if (noPlanning) presents = allUsers.map(u => ({ name: u.name, shift: '10h-22h' }));
     const ouverture = presents.filter(e => travailleOuverture(e.shift));
     const fermeture = presents.filter(e => travailleFermeture(e.shift));
     const assignments = [];
@@ -1328,14 +1330,15 @@ export default function RestoApp() {
       if (task.creneau === 'ouverture') idxO++;
       else if (task.creneau === 'fermeture') idxF++;
       else idxS++;
-      assignments.push({ ...task, assignee: emp.name });
+      assignments.push({ ...task, assignee: emp.name, noPlanning });
     });
     return assignments;
   };
 
   const openTemplateModal = () => {
-    setTemplateAssignments(computeTemplateAssignments(TODAY));
-    setTemplateDate(TODAY);
+    const d = viewDate || TODAY;
+    setTemplateAssignments(computeTemplateAssignments(d));
+    setTemplateDate(d);
     setShowTemplateModal(true);
   };
 
@@ -1739,10 +1742,10 @@ export default function RestoApp() {
               <input type="date" value={templateDate} onChange={e => { setTemplateDate(e.target.value); setTemplateAssignments(computeTemplateAssignments(e.target.value)); }}
                 style={{ width:"100%", padding:"10px 14px", borderRadius:10, border:`1.5px solid ${t.border}`, fontFamily:F, fontSize:14, color:t.text, background:t.surface, outline:"none" }} />
             </div>
-            {/* Warning si personne au planning */}
-            {templateAssignments.length === 0 && (
+            {/* Info planning */}
+            {templateAssignments.length > 0 && templateAssignments[0].noPlanning && (
               <div style={{ margin:"0 24px 16px", padding:"12px 16px", borderRadius:10, background:"#FEF3C7", border:"1px solid #FDE68A", fontSize:13, color:"#854D0E", fontFamily:F }}>
-                ⚠️ Aucun employé n'a de shift planifié ce jour-là. Vérifie le planning d'abord.
+                ℹ️ Aucun planning trouvé pour ce jour — toutes les tâches sont réparties entre tous les employés. Tu peux <strong>Répartir aléatoirement</strong> ou remplir le planning d'abord.
               </div>
             )}
             {/* Task list */}
