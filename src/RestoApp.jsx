@@ -38,11 +38,7 @@ const calcHours = (shift) => {
 // ═══════════════════════════════════════
 const initialUsersData = [
   { id: 0, name: "Jean Claude", role: "gerant", initials: "JC" },
-  { id: 1, name: "Yuna", role: "employe", initials: "Yu", poste: "Cuisine", tauxH: 12.50, heuresHebdo: 35, tel: "06 12 34 56 78", email: "yuna@kimiko.fr", dateEntree: "2025-03-15", contrat: "CDI", dateFin: "" },
-  { id: 2, name: "Lucas", role: "employe", initials: "Lu", poste: "Caisse", tauxH: 11.80, heuresHebdo: 35, tel: "06 23 45 67 89", email: "lucas@kimiko.fr", dateEntree: "2025-06-01", contrat: "CDI", dateFin: "" },
-  { id: 3, name: "Mina", role: "employe", initials: "Mi", poste: "Cuisine", tauxH: 12.50, heuresHebdo: 24, tel: "06 34 56 78 90", email: "mina@kimiko.fr", dateEntree: "2025-09-10", contrat: "CDD", dateFin: "2026-06-10" },
-  { id: 4, name: "Théo", role: "employe", initials: "Th", poste: "Salle", tauxH: 11.50, heuresHebdo: 20, tel: "06 45 67 89 01", email: "theo@kimiko.fr", dateEntree: "2025-11-20", contrat: "CDD", dateFin: "2026-05-20" },
-  { id: 5, name: "Sofia", role: "employe", initials: "So", poste: "Plonge", tauxH: 11.27, heuresHebdo: 15, tel: "06 56 78 90 12", email: "sofia@kimiko.fr", dateEntree: "2026-01-08", contrat: "CDD", dateFin: "2026-07-08" },
+  // Les employés réels sont chargés depuis Supabase au démarrage
 ];
 
 // Planning: shifts par employé par date
@@ -1655,7 +1651,14 @@ export default function RestoApp() {
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr", gap: isMobile ? 10 : 16, marginBottom: isMobile ? 16 : 28 }}>
-              <StatCard label="Équipe présente" value="4/5" sub="1 absence (Sofia)" icon={I.users} color={t.warning} t={t} />
+              {(() => {
+                const presents = todayStaff.filter(s => s.status === 'present');
+                const absents = todayStaff.filter(s => s.status === 'absent');
+                const total = todayStaff.length;
+                const absentNames = absents.map(s => s.name).join(', ');
+                const subTxt = absents.length === 0 ? 'Toute l\'équipe est présente' : `${absents.length} absence${absents.length > 1 ? 's' : ''} (${absentNames})`;
+                return <StatCard label="Équipe présente" value={`${presents.length}/${total}`} sub={subTxt} icon={I.users} color={absents.length > 0 ? t.warning : t.success} t={t} onClick={() => setSection("planning")} />;
+              })()}
               <StatCard label="Tâches du jour" value={`${todayTasks.filter(tk => tk.status === "done").length}/${todayTasks.length}`} sub={overdueTasks.length > 0 ? `${todayTasks.filter(tk => tk.status !== "done").length} restantes · ${overdueTasks.length} en retard` : `${todayTasks.filter(tk => tk.status !== "done").length} restantes`} icon={I.tasks} color={overdueTasks.length > 0 ? t.danger : t.primary} t={t} onClick={() => setSection("tasks")} />
             </div>
             <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: isMobile ? 12 : 20 }}>
