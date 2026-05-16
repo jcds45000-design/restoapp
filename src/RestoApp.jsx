@@ -678,7 +678,17 @@ const EquipeModule = ({ t, employees, usersData, setUsersData, isMobile }) => {
     const updated = { name: eName, initials, poste: ePoste, tauxH: parseFloat(eTaux) || 0, heuresHebdo: parseFloat(eHeures) || 35, tel: eTel, email: eEmail, dateEntree: eDate, contrat: eContrat, dateFin: eContrat === "CDD" ? eDateFin : "" };
     setUsersData(prev => prev.map(u => u.id === editingEmp.id ? { ...u, ...updated } : u));
     if (editingEmp._uuid) {
-      supabase.from('employees').update({ name: eName, role: ePoste, phone: eTel, email: eEmail }).eq('id', editingEmp._uuid).then(({ error }) => { if (error) alert('Erreur Supabase: ' + error.message); });
+      supabase.from('employees').update({
+        name: eName,
+        poste: ePoste,
+        phone: eTel,
+        email: eEmail,
+        taux_h: parseFloat(eTaux) || 0,
+        heures_hebdo: parseFloat(eHeures) || 35,
+        contrat: eContrat,
+        date_fin: eContrat === "CDD" && eDateFin ? eDateFin : null,
+        date_entree: eDate || null,
+      }).eq('id', editingEmp._uuid).then(({ error }) => { if (error) console.error('Supabase update error:', error.message); });
     }
     setEditingEmp(null);
   };
@@ -695,7 +705,19 @@ const EquipeModule = ({ t, employees, usersData, setUsersData, isMobile }) => {
   const addEmp = async () => {
     if (!aName.trim()) return;
     const initials = aName.trim().split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
-    const { data: newEmp, error } = await supabase.from('employees').insert({ name: aName, role: aPoste, phone: aTel, email: aEmail, active: true }).select().single();
+    const { data: newEmp, error } = await supabase.from('employees').insert({
+      name: aName,
+      role: 'employe',
+      poste: aPoste,
+      phone: aTel,
+      email: aEmail,
+      taux_h: parseFloat(aTaux) || 11.27,
+      heures_hebdo: parseFloat(aHeures) || 35,
+      contrat: aContrat,
+      date_fin: aContrat === "CDD" && aDateFin ? aDateFin : null,
+      date_entree: aDate || null,
+      active: true,
+    }).select().single();
     if (error) { alert('Erreur Supabase: ' + error.message); return; }
     setUsersData(prev => [...prev, { id: eidRef.current++, _uuid: newEmp?.id, name: aName, role: "employe", initials, poste: aPoste, tauxH: parseFloat(aTaux) || 11.27, heuresHebdo: parseFloat(aHeures) || 35, tel: aTel, email: aEmail, dateEntree: aDate, contrat: aContrat, dateFin: aContrat === "CDD" ? aDateFin : "" }]);
     setAName(""); setAPoste("Cuisine"); setATaux(""); setAHeures("35"); setATel(""); setAEmail(""); setADate(TODAY); setAContrat("CDI"); setADateFin("");
@@ -1432,11 +1454,17 @@ export default function RestoApp() {
           const gerant = prev.find(u => u.role === 'gerant') || prev[0];
           return [gerant, ...eData.map((e, i) => ({
             id: i + 1, _uuid: e.id,
-            name: e.name, role: e.role === 'gerant' ? 'gerant' : 'employe',
+            name: e.name,
+            role: e.role === 'gerant' ? 'gerant' : 'employe',
             initials: e.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase(),
-            poste: e.role, tauxH: 12, heuresHebdo: 35,
-            tel: e.phone || '', email: e.email || '',
-            dateEntree: e.created_at?.slice(0, 10) || '', contrat: 'CDI', dateFin: '',
+            poste: e.poste || 'Équipe',
+            tauxH: parseFloat(e.taux_h) || 11.27,
+            heuresHebdo: parseFloat(e.heures_hebdo) || 35,
+            tel: e.phone || '',
+            email: e.email || '',
+            dateEntree: e.date_entree || e.created_at?.slice(0, 10) || '',
+            contrat: e.contrat || 'CDI',
+            dateFin: e.date_fin || '',
           }))];
         });
       }
