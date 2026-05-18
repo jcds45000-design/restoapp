@@ -1472,13 +1472,16 @@ export default function RestoApp() {
     loadData();
   }, []);
 
+  const ABSENCE_SHIFTS = ['repos', 'maladie', 'conges', 'absence'];
   const todayStaff = useMemo(() => employees.map(emp => {
     const sched = schedule[emp.name]?.[TODAY];
+    const isAbsent = !sched || ABSENCE_SHIFTS.includes(sched);
+    const shiftLabels = { maladie: '🤒 Maladie', conges: '🌴 Congés', absence: '⚠️ Absent' };
     return {
       name: emp.name,
       role: emp.poste || emp.role,
-      shift: sched && sched !== 'repos' ? sched : '—',
-      status: !sched || sched === 'repos' ? 'absent' : 'present'
+      shift: isAbsent ? (shiftLabels[sched] || '—') : sched,
+      status: isAbsent ? 'absent' : 'present'
     };
   }), [employees, schedule]);
   const effectiveSection = (!isGerant && section === "dashboard") ? "tasks" : section;
