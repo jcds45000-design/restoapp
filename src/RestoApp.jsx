@@ -238,6 +238,8 @@ const I = {
   bell: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>,
   palette: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="13.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="10.5" r="2.5"/><circle cx="8.5" cy="7.5" r="2.5"/><circle cx="6.5" cy="12.5" r="2.5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.9 0 1.7-.1 2.5-.3.4-.1.7-.5.7-.9 0-.3-.1-.5-.3-.7-.2-.2-.3-.5-.3-.8 0-.7.5-1.2 1.2-1.2H17c2.8 0 5-2.2 5-5 0-4.9-4.5-9-10-9z"/></svg>,
   plus: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>,
+  eyeOn: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>,
+  eyeOff: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>,
   list: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>,
   kanban: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="5" height="18" rx="1"/><rect x="10" y="3" width="5" height="12" rx="1"/><rect x="17" y="3" width="5" height="15" rx="1"/></svg>,
   history: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/><path d="M4.93 4.93l2.83 2.83"/></svg>,
@@ -264,7 +266,7 @@ const CompletedByBadge = ({ assignee, completedBy, t }) => { if (!completedBy||c
 // ═══════════════════════════════════════
 // ─── TASK COMPONENTS (compact) ───
 // ═══════════════════════════════════════
-const DateNav = ({ viewDate, setViewDate, t, showHistory, setShowHistory, overdueCount }) => { const isToday=viewDate===TODAY; const label=isToday?"Aujourd'hui":viewDate===addDays(TODAY,-1)?"Hier":viewDate===addDays(TODAY,1)?"Demain":fmt(viewDate); const bs={ background:"none", border:`1px solid ${t.border}`, borderRadius:8, padding:"6px 10px", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", color:t.text, fontFamily:F, fontSize:13, fontWeight:500 }; return (<div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}><button onClick={()=>setViewDate(addDays(viewDate,-1))} style={bs}>{I.chevronL}</button><button onClick={()=>setViewDate(TODAY)} style={{ ...bs, background:isToday?t.primary:"transparent", color:isToday?"#fff":t.text, border:isToday?"none":`1px solid ${t.border}`, fontWeight:600, padding:"6px 14px" }}>{I.calendar} <span style={{ marginLeft:6 }}>{label}</span></button><input type="date" value={viewDate==="overdue"?TODAY:viewDate} onChange={e=>setViewDate(e.target.value)} style={{ ...bs, padding:"5px 10px", fontSize:12, width:140 }} /><button onClick={()=>setViewDate(addDays(viewDate,1))} style={bs}>{I.chevron}</button><div style={{ marginLeft:8, height:24, width:1, background:t.border }} /><button onClick={()=>setShowHistory(!showHistory)} style={{ ...bs, gap:6, background:showHistory?t.primary+"12":"transparent", color:showHistory?t.primary:t.textMuted }}>{I.history} <span>Historique</span></button>{overdueCount>0&&<button onClick={()=>setViewDate("overdue")} style={{ ...bs, gap:6, background:t.danger+"10", borderColor:t.danger+"30", color:t.danger, fontWeight:600 }}>{I.warning} <span>{overdueCount} en retard</span></button>}</div>); };
+const DateNav = ({ viewDate, setViewDate, t, showHistory, setShowHistory, overdueCount }) => { const isToday=viewDate===TODAY; const label=isToday?"Aujourd'hui":viewDate===addDays(TODAY,-1)?"Hier":viewDate===addDays(TODAY,1)?"Demain":fmt(viewDate); const bs={ background:"none", border:`1px solid ${t.border}`, borderRadius:8, padding:"6px 10px", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", color:t.text, fontFamily:F, fontSize:13, fontWeight:500 }; return (<div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}><button onClick={()=>setViewDate(addDays(viewDate,-1))} style={bs}>{I.chevronL}</button><button onClick={()=>setViewDate(TODAY)} style={{ ...bs, background:isToday?t.primary:"transparent", color:isToday?"#fff":t.text, border:isToday?"none":`1px solid ${t.border}`, fontWeight:600, padding:"6px 14px" }}>{I.calendar} <span style={{ marginLeft:6 }}>{label}</span></button><div style={{ position:"relative", display:"inline-flex" }}><div style={{ ...bs, padding:"5px 10px", fontSize:12, width:"auto", userSelect:"none", pointerEvents:"none", display:"flex", alignItems:"center", justifyContent:"flex-start", gap:6 }}><span>{(()=>{ const d=new Date((viewDate==="overdue"?TODAY:viewDate)+"T00:00:00"); return `${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}/${d.getFullYear()}`; })()}</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></div><input type="date" value={viewDate==="overdue"?TODAY:viewDate} onChange={e=>setViewDate(e.target.value)} style={{ position:"absolute", inset:0, opacity:0.01, width:"100%", height:"100%", cursor:"pointer" }} /></div><button onClick={()=>setViewDate(addDays(viewDate,1))} style={bs}>{I.chevron}</button><div style={{ marginLeft:8, height:24, width:1, background:t.border }} /><button onClick={()=>setShowHistory(!showHistory)} style={{ ...bs, gap:6, background:showHistory?t.primary+"12":"transparent", color:showHistory?t.primary:t.textMuted }}>{I.history} <span>Historique</span></button>{overdueCount>0&&<button onClick={()=>setViewDate("overdue")} style={{ ...bs, gap:6, background:t.danger+"10", borderColor:t.danger+"30", color:t.danger, fontWeight:600 }}>{I.warning} <span>{overdueCount} en retard</span></button>}</div>); };
 const TaskModal = ({ onClose, onSave, t, defaultDate, employees }) => { const [title,setTitle]=useState(""); const [assignee,setA]=useState(employees[0]?.name || ""); const [category,setC]=useState(categoryList[0]); const [priority,setP]=useState("moyenne"); const [dueDate,setD]=useState(defaultDate||TODAY); const sel={ width:"100%", padding:"10px 12px", borderRadius:8, border:`1px solid ${t.border}`, fontSize:14, fontFamily:F, background:t.surface, color:t.text, outline:"none", cursor:"pointer" }; return (<div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.4)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:1000 }} onClick={onClose}><div style={{ background:t.surface, borderRadius:16, padding:28, width:460, maxWidth:"92vw", boxShadow:"0 20px 60px rgba(0,0,0,0.15)" }} onClick={e=>e.stopPropagation()}><div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:24 }}><h2 style={{ fontSize:18, fontWeight:700, margin:0, fontFamily:F }}>Nouvelle tâche</h2><button onClick={onClose} style={{ background:"none", border:"none", cursor:"pointer", color:t.textMuted, padding:4 }}>{I.x}</button></div><div style={{ display:"flex", flexDirection:"column", gap:16 }}><div><label style={{ fontSize:13, fontWeight:600, color:t.textMuted, marginBottom:6, display:"block", fontFamily:F }}>Intitulé</label><input value={title} onChange={e=>setTitle(e.target.value)} placeholder="Ex: Nettoyer les friteuses…" autoFocus style={sel} /></div><div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}><div><label style={{ fontSize:13, fontWeight:600, color:t.textMuted, marginBottom:6, display:"block", fontFamily:F }}>Assigné à</label><select value={assignee} onChange={e=>setA(e.target.value)} style={sel}>{employees.map(e=><option key={e.name}>{e.name}</option>)}</select></div><div><label style={{ fontSize:13, fontWeight:600, color:t.textMuted, marginBottom:6, display:"block", fontFamily:F }}>Date prévue</label><input type="date" value={dueDate} onChange={e=>setD(e.target.value)} style={sel} /></div></div><div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}><div><label style={{ fontSize:13, fontWeight:600, color:t.textMuted, marginBottom:6, display:"block", fontFamily:F }}>Catégorie</label><select value={category} onChange={e=>setC(e.target.value)} style={sel}>{categoryList.map(c=><option key={c}>{c}</option>)}</select></div><div><label style={{ fontSize:13, fontWeight:600, color:t.textMuted, marginBottom:8, display:"block", fontFamily:F }}>Priorité</label><div style={{ display:"flex", gap:6 }}>{priorityList.map(p=>(<button key={p} onClick={()=>setP(p)} style={{ flex:1, padding:"8px 0", borderRadius:8, fontSize:12, fontWeight:600, fontFamily:F, cursor:"pointer", textTransform:"capitalize", background:priority===p?(p==="haute"?t.danger:p==="moyenne"?t.warning:t.success):t.surfaceAlt, color:priority===p?"#fff":t.textMuted, border:priority===p?"none":`1px solid ${t.border}` }}>{p}</button>))}</div></div></div></div><div style={{ display:"flex", gap:10, marginTop:24 }}><button onClick={onClose} style={{ flex:1, padding:"10px 0", borderRadius:8, border:`1px solid ${t.border}`, background:t.surface, color:t.textMuted, fontSize:14, fontWeight:600, cursor:"pointer", fontFamily:F }}>Annuler</button><button onClick={()=>{if(title.trim())onSave({title,assignee,category,priority,dueDate});}} style={{ flex:1, padding:"10px 0", borderRadius:8, border:"none", background:title.trim()?t.primary:t.border, color:title.trim()?"#fff":t.textMuted, fontSize:14, fontWeight:600, cursor:title.trim()?"pointer":"default", fontFamily:F }}>Créer</button></div></div></div>); };
 const TaskRow = ({ tk, onToggle, onDelete, onEdit, t, isGerant, showAssignee=true }) => { const overdue=isOverdue(tk); return (<div style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 14px", borderRadius:10, background:tk.status==="done"?t.surfaceAlt:overdue?t.danger+"06":t.surface, border:`1px solid ${tk.status==="done"?"transparent":overdue?t.danger+"25":t.border}`, opacity:tk.status==="done"?0.55:1 }}><button onClick={()=>onToggle(tk.id)} style={{ width:22, height:22, borderRadius:6, flexShrink:0, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", background:tk.status==="done"?t.success:"transparent", border:tk.status==="done"?"none":`2px solid ${overdue?t.danger:t.border}`, color:"#fff" }}>{tk.status==="done"&&I.check}</button><div style={{ flex:1, cursor:isGerant?"pointer":"default" }} onClick={()=>{if(isGerant&&onEdit)onEdit(tk);}}><div style={{ fontSize:14, fontWeight:500, textDecoration:tk.status==="done"?"line-through":"none", color:tk.status==="done"?t.textMuted:t.text, fontFamily:F }}>{tk.title}</div><div style={{ display:"flex", gap:8, alignItems:"center", marginTop:4, flexWrap:"wrap" }}>{showAssignee&&<span style={{ fontSize:12, color:t.textMuted, fontFamily:F }}>{tk.assignee}</span>}<CategoryTag category={tk.category} t={t} />{overdue&&<OverdueBadge t={t} />}<CompletedByBadge assignee={tk.assignee} completedBy={tk.completedBy} t={t} /></div></div><PriorityBadge priority={tk.priority} t={t} /></div>); };
 const ChecklistView = ({ tasks, onToggle, onDelete, onEdit, t, fA, fC, isGerant, currentUserName }) => { const fl=tasks.filter(tk=>(!fA||tk.assignee===fA)&&(!fC||tk.category===fC)); if(isGerant){ const a=fl.filter(tk=>tk.status!=="done"); const d=fl.filter(tk=>tk.status==="done"); return (<div style={{ display:"flex", flexDirection:"column", gap:6 }}>{a.length===0&&d.length===0&&<div style={{ textAlign:"center", padding:40, color:t.textMuted, fontSize:14, fontFamily:F }}>Aucune tâche.</div>}{a.map(tk=><TaskRow key={tk.id} tk={tk} onToggle={onToggle} onDelete={onDelete} onEdit={onEdit} t={t} isGerant />)}{d.length>0&&<><div style={{ fontSize:13, fontWeight:600, color:t.textMuted, marginTop:12, marginBottom:4, fontFamily:F }}>Terminées ({d.length})</div>{d.map(tk=><TaskRow key={tk.id} tk={tk} onToggle={onToggle} onDelete={onDelete} onEdit={onEdit} t={t} isGerant />)}</>}</div>); } const mine=fl.filter(tk=>tk.assignee===currentUserName); const team=fl.filter(tk=>tk.assignee!==currentUserName); return (<div style={{ display:"flex", flexDirection:"column", gap:6 }}><div style={{ fontSize:15, fontWeight:700, color:t.text, marginBottom:4, fontFamily:F }}>Mes tâches <span style={{ fontSize:12, fontWeight:600, color:t.textMuted, background:t.surfaceAlt, padding:"2px 10px", borderRadius:10 }}>{mine.length}</span></div>{mine.filter(tk=>tk.status!=="done").map(tk=><TaskRow key={tk.id} tk={tk} onToggle={onToggle} onDelete={onDelete} t={t} isGerant={false} showAssignee={false} />)}{mine.filter(tk=>tk.status==="done").length>0&&<>{mine.filter(tk=>tk.status==="done").map(tk=><TaskRow key={tk.id} tk={tk} onToggle={onToggle} onDelete={onDelete} t={t} isGerant={false} showAssignee={false} />)}</>}{team.length>0&&<><div style={{ fontSize:15, fontWeight:700, color:t.text, marginTop:20, marginBottom:4, fontFamily:F, paddingTop:16, borderTop:`1px solid ${t.border}` }}>Tâches de l'équipe <span style={{ fontSize:12, fontWeight:600, color:t.textMuted, background:t.surfaceAlt, padding:"2px 10px", borderRadius:10 }}>{team.length}</span></div>{team.map(tk=><TaskRow key={tk.id} tk={tk} onToggle={onToggle} onDelete={onDelete} t={t} isGerant={false} />)}</>}</div>); };
@@ -643,6 +645,10 @@ const EquipeModule = ({ t, employees, usersData, setUsersData, isMobile }) => {
   const [aDate, setADate] = useState(TODAY);
   const [aContrat, setAContrat] = useState("CDI");
   const [aDateFin, setADateFin] = useState("");
+  const [aCreateAccount, setACreateAccount] = useState(false);
+  const [aPassword, setAPassword] = useState("");
+  const [aShowPwd, setAShowPwd] = useState(false);
+  const [aAccountMsg, setAAccountMsg] = useState(null);
 
   // Edit form
   const [eName, setEName] = useState("");
@@ -654,6 +660,10 @@ const EquipeModule = ({ t, employees, usersData, setUsersData, isMobile }) => {
   const [eDate, setEDate] = useState("");
   const [eContrat, setEContrat] = useState("CDI");
   const [eDateFin, setEDateFin] = useState("");
+  const [eCreateAccount, setECreateAccount] = useState(false);
+  const [ePassword, setEPassword] = useState("");
+  const [eShowPwd, setEShowPwd] = useState(false);
+  const [eAccountMsg, setEAccountMsg] = useState(null);
 
   const eidRef = useRef(50);
 
@@ -672,25 +682,37 @@ const EquipeModule = ({ t, employees, usersData, setUsersData, isMobile }) => {
     setEditingEmp(emp);
   };
 
-  const saveEdit = () => {
+  const saveEdit = async () => {
     if (!editingEmp || !eName.trim()) return;
+    if (eCreateAccount && (!eEmail.trim() || ePassword.length < 6)) {
+      setEAccountMsg({ ok: false, msg: eEmail.trim() ? 'Mot de passe : 6 caractères minimum.' : 'Email requis pour créer un compte.' });
+      return;
+    }
     const initials = eName.trim().split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
     const updated = { name: eName, initials, poste: ePoste, tauxH: parseFloat(eTaux) || 0, heuresHebdo: parseFloat(eHeures) || 35, tel: eTel, email: eEmail, dateEntree: eDate, contrat: eContrat, dateFin: eContrat === "CDD" ? eDateFin : "" };
     setUsersData(prev => prev.map(u => u.id === editingEmp.id ? { ...u, ...updated } : u));
     if (editingEmp._uuid) {
       supabase.from('employees').update({
-        name: eName,
-        poste: ePoste,
-        phone: eTel,
-        email: eEmail,
-        taux_h: parseFloat(eTaux) || 0,
-        heures_hebdo: parseFloat(eHeures) || 35,
-        contrat: eContrat,
-        date_fin: eContrat === "CDD" && eDateFin ? eDateFin : null,
-        date_entree: eDate || null,
+        name: eName, poste: ePoste, phone: eTel, email: eEmail,
+        taux_h: parseFloat(eTaux) || 0, heures_hebdo: parseFloat(eHeures) || 35,
+        contrat: eContrat, date_fin: eContrat === "CDD" && eDateFin ? eDateFin : null, date_entree: eDate || null,
       }).eq('id', editingEmp._uuid).then(({ error }) => { if (error) console.error('Supabase update error:', error.message); });
     }
-    setEditingEmp(null);
+    // Créer le compte Auth si demandé
+    if (eCreateAccount && eEmail.trim() && ePassword) {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-user`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}`, 'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY },
+        body: JSON.stringify({ email: eEmail.trim(), password: ePassword, full_name: eName.trim(), role: 'employe' }),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        setEAccountMsg({ ok: false, msg: `Fiche sauvegardée mais compte échoué : ${data.error}` });
+        return;
+      }
+    }
+    setEditingEmp(null); setECreateAccount(false); setEPassword(""); setEAccountMsg(null);
   };
 
   const deleteEmp = () => {
@@ -704,6 +726,11 @@ const EquipeModule = ({ t, employees, usersData, setUsersData, isMobile }) => {
 
   const addEmp = async () => {
     if (!aName.trim()) return;
+    if (aCreateAccount && (!aEmail.trim() || aPassword.length < 6)) {
+      setAAccountMsg({ ok: false, msg: aEmail.trim() ? 'Mot de passe : 6 caractères minimum.' : 'Email requis pour créer un compte.' });
+      return;
+    }
+    setAAccountMsg(null);
     const initials = aName.trim().split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
     const { data: newEmp, error } = await supabase.from('employees').insert({
       name: aName,
@@ -719,8 +746,23 @@ const EquipeModule = ({ t, employees, usersData, setUsersData, isMobile }) => {
       active: true,
     }).select().single();
     if (error) { alert('Erreur Supabase: ' + error.message); return; }
+
+    // Créer le compte de connexion si demandé
+    if (aCreateAccount && aEmail.trim() && aPassword) {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-user`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}`, 'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY },
+        body: JSON.stringify({ email: aEmail.trim(), password: aPassword, full_name: aName.trim(), role: 'employe' }),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        setAAccountMsg({ ok: false, msg: `Fiche créée mais compte échoué : ${data.error}` });
+      }
+    }
+
     setUsersData(prev => [...prev, { id: eidRef.current++, _uuid: newEmp?.id, name: aName, role: "employe", initials, poste: aPoste, tauxH: parseFloat(aTaux) || 11.27, heuresHebdo: parseFloat(aHeures) || 35, tel: aTel, email: aEmail, dateEntree: aDate, contrat: aContrat, dateFin: aContrat === "CDD" ? aDateFin : "" }]);
-    setAName(""); setAPoste("Cuisine"); setATaux(""); setAHeures("35"); setATel(""); setAEmail(""); setADate(TODAY); setAContrat("CDI"); setADateFin("");
+    setAName(""); setAPoste("Cuisine"); setATaux(""); setAHeures("35"); setATel(""); setAEmail(""); setADate(TODAY); setAContrat("CDI"); setADateFin(""); setACreateAccount(false); setAPassword(""); setAAccountMsg(null);
     setShowAddModal(false);
   };
 
@@ -820,8 +862,29 @@ const EquipeModule = ({ t, employees, usersData, setUsersData, isMobile }) => {
                 <div><label style={{ fontSize: 12, fontWeight: 600, color: t.textMuted, marginBottom: 6, display: "block" }}>Email</label><input value={aEmail} onChange={e => setAEmail(e.target.value)} placeholder="nom@kimiko.fr" style={sel} /></div>
               </div>
             </div>
+              {/* Option compte de connexion */}
+              <div style={{ borderTop: `1px solid ${t.border}`, paddingTop: 14 }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
+                  <input type="checkbox" checked={aCreateAccount} onChange={e => { setACreateAccount(e.target.checked); setAAccountMsg(null); }} style={{ width: 16, height: 16, cursor: "pointer", accentColor: t.primary }} />
+                  <span style={{ fontSize: 13, fontWeight: 600, color: t.text, fontFamily: F }}>Créer un compte de connexion</span>
+                </label>
+                {aCreateAccount && (
+                  <div style={{ marginTop: 12 }}>
+                    <label style={{ fontSize: 12, fontWeight: 600, color: t.textMuted, marginBottom: 6, display: "block" }}>Mot de passe temporaire</label>
+                    <div style={{ position: 'relative' }}>
+                      <input value={aPassword} onChange={e => setAPassword(e.target.value)} type={aShowPwd ? 'text' : 'password'} placeholder="Minimum 6 caractères" style={{ ...sel, borderColor: t.primary + "60", paddingRight: 40 }} />
+                      <button type="button" onClick={() => setAShowPwd(!aShowPwd)} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: t.textMuted, display: 'flex', alignItems: 'center', padding: 4 }} aria-label={aShowPwd ? 'Masquer' : 'Afficher'}>
+                        {aShowPwd ? I.eyeOff : I.eyeOn}
+                      </button>
+                    </div>
+                    <div style={{ fontSize: 12, color: t.textMuted, marginTop: 4, fontFamily: F }}>L'email saisi ci-dessus sera utilisé comme identifiant.</div>
+                  </div>
+                )}
+                {aAccountMsg && <div style={{ marginTop: 8, fontSize: 12, fontWeight: 500, color: aAccountMsg.ok ? t.success : t.danger, fontFamily: F }}>{aAccountMsg.msg}</div>}
+              </div>
+
             <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
-              <button onClick={() => setShowAddModal(false)} style={{ flex: 1, padding: "10px 0", borderRadius: 8, border: `1px solid ${t.border}`, background: t.surface, color: t.textMuted, fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: F }}>Annuler</button>
+              <button onClick={() => { setShowAddModal(false); setACreateAccount(false); setAPassword(""); setAAccountMsg(null); }} style={{ flex: 1, padding: "10px 0", borderRadius: 8, border: `1px solid ${t.border}`, background: t.surface, color: t.textMuted, fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: F }}>Annuler</button>
               <button onClick={addEmp} style={{ flex: 1, padding: "10px 0", borderRadius: 8, border: "none", background: aName.trim() ? t.primary : t.border, color: aName.trim() ? "#fff" : t.textMuted, fontSize: 14, fontWeight: 600, cursor: aName.trim() ? "pointer" : "default", fontFamily: F }}>Ajouter</button>
             </div>
           </div>
@@ -859,14 +922,35 @@ const EquipeModule = ({ t, employees, usersData, setUsersData, isMobile }) => {
                 <div><label style={{ fontSize: 12, fontWeight: 600, color: t.textMuted, marginBottom: 6, display: "block" }}>Email</label><input value={eEmail} onChange={e => setEEmail(e.target.value)} style={sel} /></div>
               </div>
             </div>
-            <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
+            {/* Option compte de connexion */}
+            <div style={{ borderTop: `1px solid ${t.border}`, paddingTop: 14, marginTop: 4 }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
+                <input type="checkbox" checked={eCreateAccount} onChange={e => { setECreateAccount(e.target.checked); setEAccountMsg(null); }} style={{ width: 16, height: 16, cursor: "pointer", accentColor: t.primary }} />
+                <span style={{ fontSize: 13, fontWeight: 600, color: t.text, fontFamily: F }}>Créer / recréer un compte de connexion</span>
+              </label>
+              {eCreateAccount && (
+                <div style={{ marginTop: 12 }}>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: t.textMuted, marginBottom: 6, display: "block" }}>Mot de passe temporaire</label>
+                  <div style={{ position: 'relative' }}>
+                    <input value={ePassword} onChange={e => setEPassword(e.target.value)} type={eShowPwd ? 'text' : 'password'} placeholder="Minimum 6 caractères" style={{ ...sel, borderColor: t.primary + "60", paddingRight: 40 }} />
+                    <button type="button" onClick={() => setEShowPwd(!eShowPwd)} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: t.textMuted, display: 'flex', alignItems: 'center', padding: 4 }} aria-label={eShowPwd ? 'Masquer' : 'Afficher'}>
+                      {eShowPwd ? I.eyeOff : I.eyeOn}
+                    </button>
+                  </div>
+                  <div style={{ fontSize: 12, color: t.textMuted, marginTop: 4, fontFamily: F }}>L'email de la fiche sera utilisé comme identifiant.</div>
+                </div>
+              )}
+              {eAccountMsg && <div style={{ marginTop: 8, fontSize: 12, fontWeight: 500, color: eAccountMsg.ok ? t.success : t.danger, fontFamily: F }}>{eAccountMsg.msg}</div>}
+            </div>
+
+            <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
               {!confirmDelete ? (
                 <button onClick={() => setConfirmDelete(true)} style={{ padding: "10px 14px", borderRadius: 8, border: `1px solid ${t.danger}30`, background: t.danger + "08", color: t.danger, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: F, display: "flex", alignItems: "center", gap: 6 }}>{I.trash} Supprimer</button>
               ) : (
                 <button onClick={deleteEmp} style={{ padding: "10px 14px", borderRadius: 8, border: "none", background: t.danger, color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: F }}>Confirmer</button>
               )}
               <div style={{ flex: 1 }} />
-              <button onClick={() => { setEditingEmp(null); setConfirmDelete(false); }} style={{ padding: "10px 16px", borderRadius: 8, border: `1px solid ${t.border}`, background: t.surface, color: t.textMuted, fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: F }}>Annuler</button>
+              <button onClick={() => { setEditingEmp(null); setConfirmDelete(false); setECreateAccount(false); setEPassword(""); setEAccountMsg(null); }} style={{ padding: "10px 16px", borderRadius: 8, border: `1px solid ${t.border}`, background: t.surface, color: t.textMuted, fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: F }}>Annuler</button>
               <button onClick={saveEdit} style={{ padding: "10px 16px", borderRadius: 8, border: "none", background: eName.trim() ? t.primary : t.border, color: eName.trim() ? "#fff" : t.textMuted, fontSize: 14, fontWeight: 600, cursor: eName.trim() ? "pointer" : "default", fontFamily: F }}>Enregistrer</button>
             </div>
           </div>
@@ -1298,9 +1382,131 @@ const PlanningModule = ({ t, schedule, setSchedule, pointage, isGerant, currentU
 };
 
 // ═══════════════════════════════════════
+// ─── SETTINGS MODULE ───
+// ═══════════════════════════════════════
+const SettingsModule = ({ t, F }) => {
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPwd, setShowPwd] = useState(false);
+  const [role, setRole] = useState('employe');
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState(null); // { success, message }
+
+  const createAccount = async () => {
+    if (!name.trim() || !email.trim() || !password.trim()) {
+      setResult({ success: false, message: 'Tous les champs sont requis.' });
+      return;
+    }
+    if (password.length < 6) {
+      setResult({ success: false, message: 'Le mot de passe doit faire au moins 6 caractères.' });
+      return;
+    }
+    setLoading(true);
+    setResult(null);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-user`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`,
+            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+          },
+          body: JSON.stringify({ email: email.trim(), password, full_name: name.trim(), role }),
+        }
+      );
+      const data = await res.json();
+      if (!data.success) {
+        setResult({ success: false, message: data.error || 'Erreur lors de la création.' });
+        setLoading(false);
+        return;
+      }
+
+      // Créer automatiquement la fiche employé dans Équipe
+      await supabase.from('employees').upsert({
+        name: name.trim(),
+        email: email.trim(),
+        role: role,
+        poste: role === 'gerant' ? 'Gérant' : 'Polyvalent',
+        taux_h: 11.27,
+        heures_hebdo: 35,
+        contrat: 'CDI',
+        active: true,
+      }, { onConflict: 'email' });
+
+      setResult({ success: true, message: `Compte et fiche employé créés pour ${name.trim()}.` });
+      setName(''); setEmail(''); setPassword(''); setRole('employe');
+    } catch (e) {
+      setResult({ success: false, message: 'Erreur réseau : ' + e.message });
+    }
+    setLoading(false);
+  };
+
+  const inp = { width: '100%', padding: '10px 14px', borderRadius: 10, border: `1.5px solid ${t.border}`, fontSize: 14, fontFamily: F, background: t.bg, color: t.text, outline: 'none', boxSizing: 'border-box' };
+
+  return (
+    <div style={{ maxWidth: 560 }}>
+      <div style={{ background: t.surface, borderRadius: 16, border: `1px solid ${t.border}`, padding: 28, marginBottom: 20 }}>
+        <h2 style={{ fontSize: 17, fontWeight: 700, margin: '0 0 6px', fontFamily: F }}>Gestion des comptes</h2>
+        <p style={{ fontSize: 14, color: t.textMuted, margin: '0 0 24px', fontFamily: F }}>Créer un compte pour un nouvel employé ou gérant.</p>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div>
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: t.textMuted, marginBottom: 6, fontFamily: F }}>Prénom et nom</label>
+            <input value={name} onChange={e => setName(e.target.value)} placeholder="Ex : Yuna Kim" style={inp} />
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: t.textMuted, marginBottom: 6, fontFamily: F }}>Adresse email</label>
+            <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="yuna@kimiko.fr" style={inp} />
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: t.textMuted, marginBottom: 6, fontFamily: F }}>Mot de passe temporaire</label>
+            <div style={{ position: 'relative' }}>
+              <input type={showPwd ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)} placeholder="Minimum 6 caractères" style={{ ...inp, paddingRight: 40 }} />
+              <button type="button" onClick={() => setShowPwd(!showPwd)} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: t.textMuted, display: 'flex', alignItems: 'center', padding: 4 }} aria-label={showPwd ? 'Masquer' : 'Afficher'}>
+                {showPwd ? I.eyeOff : I.eyeOn}
+              </button>
+            </div>
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: t.textMuted, marginBottom: 8, fontFamily: F }}>Rôle</label>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {[{ val: 'employe', label: 'Employé' }, { val: 'gerant', label: 'Gérant salarié' }].map(r => (
+                <button key={r.val} onClick={() => setRole(r.val)} style={{ flex: 1, padding: '10px 0', borderRadius: 10, border: role === r.val ? 'none' : `1px solid ${t.border}`, background: role === r.val ? t.primary : t.surfaceAlt, color: role === r.val ? '#fff' : t.textMuted, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: F }}>
+                  {r.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {result && (
+            <div style={{ padding: '10px 14px', borderRadius: 8, fontSize: 13, fontWeight: 500, fontFamily: F, background: result.success ? t.success + '12' : t.danger + '12', color: result.success ? t.success : t.danger, border: `1px solid ${result.success ? t.success : t.danger}22` }}>
+              {result.success ? '✓ ' : '✗ '}{result.message}
+            </div>
+          )}
+
+          <button onClick={createAccount} disabled={loading} style={{ padding: '12px 0', borderRadius: 10, border: 'none', background: loading ? t.primary + '80' : t.primary, color: '#fff', fontSize: 14, fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer', fontFamily: F, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+            {loading ? 'Création en cours...' : 'Créer le compte'}
+          </button>
+        </div>
+      </div>
+
+      <div style={{ background: t.surface, borderRadius: 16, border: `1px solid ${t.border}`, padding: 20 }}>
+        <p style={{ fontSize: 13, color: t.textMuted, margin: 0, fontFamily: F, lineHeight: 1.6 }}>
+          <strong style={{ color: t.text }}>Note :</strong> Le compte est actif immédiatement, sans email de confirmation. Communiquez le mot de passe temporaire à la personne et invitez-la à le changer.
+        </p>
+      </div>
+    </div>
+  );
+};
+
+// ═══════════════════════════════════════
 // ─── MAIN APP ───
 // ═══════════════════════════════════════
-export default function RestoApp() {
+export default function RestoApp({ authUser, initialTheme, onLogout }) {
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768);
@@ -1316,7 +1522,7 @@ export default function RestoApp() {
   const employees = useMemo(() => usersData.filter(u => u.name !== "Jean Claude"), [usersData]);
 
   const [section, setSection] = useState("dashboard");
-  const [themeKey, setThemeKey] = useState("kimiko");
+  const [themeKey, setThemeKey] = useState(initialTheme || "kimiko");
   const [showThemePicker, setShowThemePicker] = useState(false);
   const [tasks, setTasks] = useState(initialTasks);
   const [schedule, setSchedule] = useState({});
@@ -1451,21 +1657,25 @@ export default function RestoApp() {
       const { data: eData } = await supabase.from('employees').select('*').order('name');
       if (eData?.length) {
         setUsersData(prev => {
-          const gerant = prev.find(u => u.role === 'gerant') || prev[0];
-          return [gerant, ...eData.map((e, i) => ({
-            id: i + 1, _uuid: e.id,
-            name: e.name,
-            role: e.role === 'gerant' ? 'gerant' : 'employe',
-            initials: e.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase(),
-            poste: e.poste || 'Équipe',
-            tauxH: parseFloat(e.taux_h) || 11.27,
-            heuresHebdo: parseFloat(e.heures_hebdo) || 35,
-            tel: e.phone || '',
-            email: e.email || '',
-            dateEntree: e.date_entree || e.created_at?.slice(0, 10) || '',
-            contrat: e.contrat || 'CDI',
-            dateFin: e.date_fin || '',
-          }))];
+          // Gérants non-salariés (pas dans la table employees) — ex: Jean-Claude
+          const gerantsExternes = prev.filter(u => u.role === 'gerant' && !eData.find(e => e.name === u.name));
+          return [
+            ...gerantsExternes,
+            ...eData.map((e, i) => ({
+              id: i + 1, _uuid: e.id,
+              name: e.name,
+              role: e.role === 'gerant' ? 'gerant' : 'employe',
+              initials: e.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase(),
+              poste: e.poste || 'Équipe',
+              tauxH: parseFloat(e.taux_h) || 11.27,
+              heuresHebdo: parseFloat(e.heures_hebdo) || 35,
+              tel: e.phone || '',
+              email: e.email || '',
+              dateEntree: e.date_entree || e.created_at?.slice(0, 10) || '',
+              contrat: e.contrat || 'CDI',
+              dateFin: e.date_fin || '',
+            })),
+          ];
         });
       }
     };
@@ -1564,7 +1774,7 @@ export default function RestoApp() {
 
   // Mobile bottom bar items (max 5)
   const mobileNavItems = isGerant
-    ? [{ id:"dashboard", label:"Accueil", icon:I.dashboard }, { id:"tasks", label:"Tâches", icon:I.tasks, badge:empBadge }, { id:"planning", label:"Planning", icon:I.users }, { id:"stocks", label:"Stocks", icon:I.box, badge:stockAlertCount+pendingSortiesCount }, { id:"more", label:"Plus", icon:I.settings }]
+    ? [{ id:"dashboard", label:"Accueil", icon:I.dashboard }, { id:"equipe", label:"Équipe", icon:I.users }, { id:"planning", label:"Planning", icon:I.calendar }, { id:"tasks", label:"Tâches", icon:I.tasks, badge:empBadge }, { id:"more", label:"Plus", icon:I.settings }]
     : [{ id:"tasks", label:"Tâches", icon:I.tasks, badge:empBadge }, { id:"planning", label:"Planning", icon:I.users }, { id:"stocks", label:"Stocks", icon:I.box }, { id:"settings", label:"Réglages", icon:I.settings }];
 
   return (
@@ -1601,7 +1811,15 @@ export default function RestoApp() {
             <button onClick={() => setShowThemePicker(!showThemePicker)} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "8px 10px", borderRadius: 8, border: "none", cursor: "pointer", background: showThemePicker ? t.sidebarAccent + "22" : "transparent", color: t.sidebarText, fontSize: 13, fontFamily: F, textAlign: "left" }}>
               {I.palette} Thème : {t.name}
             </button>
-            {showThemePicker && (<div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap", padding: "0 4px" }}>{Object.entries(themes).map(([k, th]) => (<button key={k} onClick={() => { setThemeKey(k); setShowThemePicker(false); }} title={th.name} style={{ width: 28, height: 28, borderRadius: 8, border: themeKey === k ? `2px solid ${t.sidebarAccent}` : "2px solid transparent", background: `linear-gradient(135deg, ${th.sidebar} 50%, ${th.primary} 50%)`, cursor: "pointer" }} />))}</div>)}
+            {showThemePicker && (<div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap", padding: "0 4px" }}>{Object.entries(themes).map(([k, th]) => (<button key={k} onClick={() => { setThemeKey(k); localStorage.setItem('restoapp-theme', k); setShowThemePicker(false); }} title={th.name} style={{ width: 28, height: 28, borderRadius: 8, border: themeKey === k ? `2px solid ${t.sidebarAccent}` : "2px solid transparent", background: `linear-gradient(135deg, ${th.sidebar} 50%, ${th.primary} 50%)`, cursor: "pointer" }} />))}</div>)}
+            {onLogout && (
+              <button onClick={onLogout} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "10px 10px", borderRadius: 8, border: `1px solid rgba(220,38,38,0.25)`, cursor: "pointer", background: "rgba(220,38,38,0.08)", color: "#FCA5A5", fontSize: 13, fontFamily: F, textAlign: "left", marginTop: 6 }}
+                onMouseEnter={e => { e.currentTarget.style.background = "rgba(220,38,38,0.18)"; e.currentTarget.style.color = "#fff"; }}
+                onMouseLeave={e => { e.currentTarget.style.background = "rgba(220,38,38,0.08)"; e.currentTarget.style.color = "#FCA5A5"; }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                Déconnexion
+              </button>
+            )}
           </div>
         </nav>
       )}
@@ -1705,8 +1923,13 @@ export default function RestoApp() {
           <StocksModule t={t} products={products} setProducts={setProducts} sorties={sorties} setSorties={setSorties} isGerant={isGerant} currentUserName={currentUser.name} />
         )}
 
+        {/* PARAMÈTRES */}
+        {effectiveSection === "settings" && isGerant && (
+          <SettingsModule t={t} F={F} />
+        )}
+
         {/* Placeholder */}
-        {!["dashboard", "tasks", "planning", "stocks", "equipe"].includes(effectiveSection) && (
+        {!["dashboard", "tasks", "planning", "stocks", "equipe", "settings"].includes(effectiveSection) && (
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "60vh", color: t.textMuted }}>
             <div style={{ fontSize: 48, marginBottom: 16, opacity: 0.3 }}>🚧</div>
             <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 4 }}>Module « {navItems.find(n => n.id === effectiveSection)?.label || effectiveSection} »</div>
@@ -1738,14 +1961,20 @@ export default function RestoApp() {
       {isMobile && showMobileMenu && (
         <div style={{ position: "fixed", bottom: 60, left: 0, right: 0, background: t.surface, borderTop: `1px solid ${t.border}`, padding: "12px 16px", zIndex: 899, boxShadow: "0 -4px 20px rgba(0,0,0,0.1)" }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            {[{ id: "equipe", label: "Équipe", icon: I.users }, { id: "orders", label: "Commandes", icon: I.orders }, { id: "finances", label: "Finances", icon: I.euro }, { id: "settings", label: "Paramètres", icon: I.settings }].map(item => (
+            {[{ id: "stocks", label: "Stocks", icon: I.box, badge: stockAlertCount+pendingSortiesCount }, { id: "orders", label: "Commandes", icon: I.orders }, { id: "finances", label: "Finances", icon: I.euro }, { id: "settings", label: "Paramètres", icon: I.settings }].map(item => (
               <button key={item.id} onClick={() => { setSection(item.id); setShowMobileMenu(false); }} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", borderRadius: 10, border: "none", cursor: "pointer", background: effectiveSection === item.id ? t.primary + "12" : "transparent", color: effectiveSection === item.id ? t.primary : t.text, fontSize: 14, fontWeight: 500, fontFamily: F, textAlign: "left", width: "100%" }}>
                 {item.icon}{item.label}
               </button>
             ))}
             <div style={{ borderTop: `1px solid ${t.border}`, marginTop: 4, paddingTop: 8, display: "flex", gap: 6, flexWrap: "wrap" }}>
-              {Object.entries(themes).map(([k, th]) => (<button key={k} onClick={() => { setThemeKey(k); setShowMobileMenu(false); }} style={{ width: 32, height: 32, borderRadius: 8, border: themeKey === k ? `2px solid ${t.primary}` : `2px solid ${t.border}`, background: `linear-gradient(135deg, ${th.sidebar} 50%, ${th.primary} 50%)`, cursor: "pointer" }} />))}
+              {Object.entries(themes).map(([k, th]) => (<button key={k} onClick={() => { setThemeKey(k); localStorage.setItem('restoapp-theme', k); setShowMobileMenu(false); }} style={{ width: 32, height: 32, borderRadius: 8, border: themeKey === k ? `2px solid ${t.primary}` : `2px solid ${t.border}`, background: `linear-gradient(135deg, ${th.sidebar} 50%, ${th.primary} 50%)`, cursor: "pointer" }} />))}
             </div>
+            {onLogout && (
+              <button onClick={onLogout} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "12px 14px", borderRadius: 10, border: `1px solid ${t.danger}22`, cursor: "pointer", background: t.danger + "08", color: t.danger, fontSize: 14, fontWeight: 600, fontFamily: F, textAlign: "left", marginTop: 4 }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                Déconnexion
+              </button>
+            )}
           </div>
         </div>
       )}
