@@ -41,23 +41,11 @@ const initialUsersData = [
   // Les employés réels sont chargés depuis Supabase au démarrage
 ];
 
-// Planning: shifts par employé par date
-const initialSchedule = {
-  "Yuna":  { "2026-05-04":"repos","2026-05-05":"11h30-14h / 18h-22h","2026-05-06":"11h30-14h / 18h-22h","2026-05-07":"11h30-14h / 18h-22h","2026-05-08":"10h-15h / 18h-22h","2026-05-09":"11h30-22h","2026-05-10":"11h30-22h" },
-  "Lucas": { "2026-05-04":"repos","2026-05-05":"11h30-14h / 18h-22h","2026-05-06":"11h30-14h / 18h-22h","2026-05-07":"repos","2026-05-08":"11h-15h / 18h-22h","2026-05-09":"11h30-22h","2026-05-10":"11h30-22h" },
-  "Mina":  { "2026-05-04":"repos","2026-05-05":"11h30-14h / 18h-22h","2026-05-06":"repos","2026-05-07":"11h30-14h / 18h-22h","2026-05-08":"11h-15h / 18h-21h","2026-05-09":"11h30-22h","2026-05-10":"repos" },
-  "Théo":  { "2026-05-04":"repos","2026-05-05":"11h30-14h","2026-05-06":"11h30-14h / 18h-22h","2026-05-07":"11h30-14h / 18h-22h","2026-05-08":"11h30-15h","2026-05-09":"11h30-22h","2026-05-10":"11h30-22h" },
-  "Sofia": { "2026-05-04":"repos","2026-05-05":"18h-22h","2026-05-06":"18h-22h","2026-05-07":"18h-22h","2026-05-08":"repos","2026-05-09":"18h-22h","2026-05-10":"18h-22h" },
-};
+// Planning: shifts par employé par date — chargé depuis Supabase au démarrage
+const initialSchedule = {};
 
-// Pointage: heures réelles par employé par date (null = pas encore pointé)
-const initialPointage = {
-  "Yuna":  { "2026-05-05":"11h35-14h05 / 18h-22h10","2026-05-06":"11h30-14h / 18h-22h","2026-05-07":"11h30-14h / 18h-21h50","2026-05-08": null },
-  "Lucas": { "2026-05-05":"11h30-14h / 18h-22h15","2026-05-06":"11h40-14h / 18h-22h","2026-05-08": null },
-  "Mina":  { "2026-05-05":"11h30-14h / 18h-22h","2026-05-07":"11h30-14h / 18h-22h05","2026-05-08": null },
-  "Théo":  { "2026-05-05":"11h30-13h50","2026-05-06":"11h30-14h / 18h-22h","2026-05-07":"11h30-14h10 / 18h-22h","2026-05-08": null },
-  "Sofia": { "2026-05-05":"18h05-22h","2026-05-06":"18h-22h","2026-05-07":"18h-21h55" },
-};
+// Pointage: heures réelles par employé par date — chargé depuis Supabase au démarrage
+const initialPointage = {};
 
 const categoryList = ["Service","Cuisine","Nettoyage","Stock","Admin","Autre"];
 const priorityList = ["haute","moyenne","basse"];
@@ -144,69 +132,21 @@ const estPresent = (shift) => {
   return shift && shift !== 'repos' && !['maladie','conges','absence'].includes(shift);
 };
 
-const initialTasks = [
-  { id:1, title:"Inventaire chambre froide", assignee:"Mina", category:"Stock", priority:"haute", status:"done", dueDate:"2026-05-07", completedBy:"Mina" },
-  { id:2, title:"Nettoyer le sol cuisine", assignee:"Théo", category:"Nettoyage", priority:"moyenne", status:"done", dueDate:"2026-05-07", completedBy:"Théo" },
-  { id:3, title:"Appeler fournisseur panko", assignee:"Lucas", category:"Stock", priority:"haute", status:"todo", dueDate:"2026-05-07", completedBy:null },
-  { id:4, title:"Nettoyer la hotte d'extraction", assignee:"Théo", category:"Nettoyage", priority:"haute", status:"todo", dueDate:TODAY, completedBy:null },
-  { id:5, title:"Réception livraison Metro (10h)", assignee:"Mina", category:"Stock", priority:"haute", status:"doing", dueDate:TODAY, completedBy:null },
-  { id:6, title:"Préparer la marinade poulet frit", assignee:"Yuna", category:"Cuisine", priority:"moyenne", status:"doing", dueDate:TODAY, completedBy:null },
-  { id:7, title:"Réappro serviettes + gobelets", assignee:"Lucas", category:"Stock", priority:"moyenne", status:"todo", dueDate:TODAY, completedBy:null },
-  { id:8, title:"Vérifier DLC sauces frigo", assignee:"Mina", category:"Stock", priority:"haute", status:"todo", dueDate:TODAY, completedBy:null },
-  { id:9, title:"Poster story Instagram", assignee:"Lucas", category:"Admin", priority:"basse", status:"todo", dueDate:TODAY, completedBy:null },
-  { id:10, title:"Nettoyer friteuses après midi", assignee:"Théo", category:"Nettoyage", priority:"haute", status:"todo", dueDate:TODAY, completedBy:null },
-  { id:11, title:"Préparer riz vinaigré (20 portions)", assignee:"Yuna", category:"Cuisine", priority:"moyenne", status:"done", dueDate:TODAY, completedBy:"Yuna" },
-  { id:12, title:"Compter la caisse du midi", assignee:"Lucas", category:"Service", priority:"haute", status:"done", dueDate:TODAY, completedBy:"Mina" },
-  { id:13, title:"Réception Promocash (9h)", assignee:"Mina", category:"Stock", priority:"haute", status:"todo", dueDate:"2026-05-09", completedBy:null },
-  { id:14, title:"Former Sofia sur la plonge", assignee:"Théo", category:"Service", priority:"moyenne", status:"todo", dueDate:"2026-05-09", completedBy:null },
-  { id:15, title:"Bento spécial week-end", assignee:"Yuna", category:"Cuisine", priority:"haute", status:"todo", dueDate:"2026-05-09", completedBy:null },
-  { id:16, title:"Nettoyage complet frigos", assignee:"Théo", category:"Nettoyage", priority:"haute", status:"todo", dueDate:"2026-05-10", completedBy:null },
-  { id:17, title:"Vérifier stocks week-end", assignee:"Mina", category:"Stock", priority:"haute", status:"todo", dueDate:"2026-05-10", completedBy:null },
-];
+// Tâches — chargées depuis Supabase au démarrage
+const initialTasks = [];
 
 // todayStaff est calculé dynamiquement depuis employees (voir RestoApp)
 const stockCategories = ["Viandes & Poissons","Sauces & Condiments","Légumes & Frais","Sec & Féculents","Boissons","Emballages & Consommables"];
-const initialProducts = [
-  { id:1, name:"Poulet (cuisses désossées)", category:"Viandes & Poissons", qty:3.5, unit:"kg", seuil:5, seuilOrange:8 },
-  { id:2, name:"Porc haché", category:"Viandes & Poissons", qty:2, unit:"kg", seuil:3, seuilOrange:5 },
-  { id:3, name:"Crevettes décortiquées", category:"Viandes & Poissons", qty:1.5, unit:"kg", seuil:2, seuilOrange:3 },
-  { id:4, name:"Huile de friture", category:"Sec & Féculents", qty:2, unit:"L", seuil:5, seuilOrange:8 },
-  { id:5, name:"Chapelure panko", category:"Sec & Féculents", qty:0.8, unit:"kg", seuil:2, seuilOrange:3 },
-  { id:6, name:"Riz à sushi", category:"Sec & Féculents", qty:4, unit:"kg", seuil:5, seuilOrange:8 },
-  { id:7, name:"Farine de blé", category:"Sec & Féculents", qty:3, unit:"kg", seuil:2, seuilOrange:4 },
-  { id:8, name:"Sauce gochujang", category:"Sauces & Condiments", qty:1.2, unit:"kg", seuil:2, seuilOrange:3 },
-  { id:9, name:"Sauce soja", category:"Sauces & Condiments", qty:2.5, unit:"L", seuil:1.5, seuilOrange:3 },
-  { id:10, name:"Vinaigre de riz", category:"Sauces & Condiments", qty:1, unit:"L", seuil:0.5, seuilOrange:1.5 },
-  { id:11, name:"Huile de sésame", category:"Sauces & Condiments", qty:0.3, unit:"L", seuil:0.5, seuilOrange:1 },
-  { id:12, name:"Oignons verts", category:"Légumes & Frais", qty:15, unit:"bottes", seuil:5, seuilOrange:10 },
-  { id:13, name:"Chou chinois", category:"Légumes & Frais", qty:3, unit:"pièces", seuil:4, seuilOrange:6 },
-  { id:14, name:"Carottes", category:"Légumes & Frais", qty:2, unit:"kg", seuil:2, seuilOrange:4 },
-  { id:15, name:"Coca-Cola 33cl", category:"Boissons", qty:24, unit:"canettes", seuil:12, seuilOrange:24 },
-  { id:16, name:"Eau plate 50cl", category:"Boissons", qty:18, unit:"bouteilles", seuil:12, seuilOrange:20 },
-  { id:17, name:"Barquettes kraft M", category:"Emballages & Consommables", qty:80, unit:"pièces", seuil:50, seuilOrange:100 },
-  { id:18, name:"Baguettes jetables", category:"Emballages & Consommables", qty:200, unit:"paires", seuil:100, seuilOrange:200 },
-  { id:19, name:"Serviettes", category:"Emballages & Consommables", qty:150, unit:"pièces", seuil:100, seuilOrange:250 },
-  { id:20, name:"Gobelets 40cl", category:"Emballages & Consommables", qty:45, unit:"pièces", seuil:50, seuilOrange:80 },
-];
-const initialSorties = [
-  { id:1, productId:1, qty:1.5, empName:"Yuna", date:TODAY, time:"11h45", status:"pending", note:"Prépa poulet frit midi" },
-  { id:2, productId:5, qty:0.5, empName:"Yuna", date:TODAY, time:"11h50", status:"validated", note:"Panure corn dogs" },
-  { id:3, productId:8, qty:0.3, empName:"Mina", date:TODAY, time:"12h15", status:"pending", note:"Sauce bibimbap" },
-  { id:4, productId:6, qty:2, empName:"Mina", date:"2026-05-07", time:"11h30", status:"validated", note:"Cuisson riz service midi" },
-];
-const stockAlerts = [
-  { item:"Huile de friture", qty:"2 L", seuil:"5 L", urgency:"high" },
-  { item:"Chapelure panko", qty:"800 g", seuil:"2 kg", urgency:"high" },
-  { item:"Sauce gochujang", qty:"1.2 kg", seuil:"2 kg", urgency:"medium" },
-  { item:"Riz à sushi", qty:"4 kg", seuil:"5 kg", urgency:"low" },
-];
-const recentOrders = [
-  { id:"#142", items:"2× Corn Dog, 1× Bibimbap", status:"en cours", time:"il y a 3 min" },
-  { id:"#141", items:"1× Poulet Frit L, 2× Wings", status:"prêt", time:"il y a 8 min" },
-  { id:"#140", items:"3× Bento Kimiko", status:"servi", time:"il y a 14 min" },
-  { id:"#139", items:"1× Corn Dog, 1× Tteokbokki", status:"servi", time:"il y a 22 min" },
-];
-const weeklyCA = [{day:"Lun",value:1240},{day:"Mar",value:1580},{day:"Mer",value:1320},{day:"Jeu",value:1890},{day:"Ven",value:2340},{day:"Sam",value:2780},{day:"Dim",value:0}];
+// Produits — chargés depuis Supabase au démarrage
+const initialProducts = [];
+// Sorties de stock — chargées depuis Supabase au démarrage
+const initialSorties = [];
+// Alertes stock — calculées dynamiquement depuis les produits
+const stockAlerts = [];
+// Commandes récentes — chargées depuis Supabase au démarrage
+const recentOrders = [];
+// CA hebdomadaire — chargé depuis Supabase au démarrage
+const weeklyCA = [{day:"Lun",value:0},{day:"Mar",value:0},{day:"Mer",value:0},{day:"Jeu",value:0},{day:"Ven",value:0},{day:"Sam",value:0},{day:"Dim",value:0}];
 
 // ═══════════════════════════════════════
 // ─── THEMES ───
