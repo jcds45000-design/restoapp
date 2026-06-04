@@ -1,5 +1,6 @@
-import { useState, useRef, useMemo, useEffect } from "react";
+import { useState, useRef, useMemo, useEffect, Fragment } from "react";
 import { supabase } from './lib/supabase';
+import { repartir, CORVEES, pivotSemaine, decalerJours } from './lib/taskDispatch';
 
 // ═══════════════════════════════════════
 // ─── HELPERS ───
@@ -1443,6 +1444,200 @@ const SettingsModule = ({ t, F }) => {
   );
 };
 
+const SemaineView = ({ tasks, setTasks, employees, schedule, t }) => {
+  const [weekStart, setWeekStart] = useState(WEEK_START); // lundi de la semaine affichée
+  const [editCell, setEditCell] = useState(null); // { title, date }
+  const [busy, setBusy] = useState(false);
+
+  const jours = useMemo(() => [0, 1, 2, 3, 4, 5].map(i => addDays(weekStart, i)), [weekStart]); // lundi..samedi
+  const grille = useMemo(() => pivotSemaine(tasks, jours), [tasks, jours]);
+
+  const PRIO_TO_DB = { haute: 'high', moyenne: 'medium', basse: 'low' };
+  const PRIO_FROM_DB = { high: 'haute', medium: 'moyenne', low: 'basse' };
+  const JOURS_NOMS = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
+  const EXCLUS = ['Sarah'];
+  const groupes = [
+    { titre: 'Ouverture', cle: 'ouverture' },
+    { titre: 'Service', cle: 'service' },
+    { titre: 'Fermeture', cle: 'fermeture' },
+  ];
+
+  const toAppTask = (d) => ({
+    id: d.id, title: d.title, assignee: d.assignee_name, category: d.category,
+    priority: PRIO_FROM_DB[d.priority] || 'moyenne', status: 'todo', dueDate: d.due_date, completedBy: null,
+  });
+
+  const presentsJour = (date) => employees
+    .filter(u => estPresent((schedule[u.name] || {})[date]))
+    .map(u => u.name);
+
+  const assignerCellule = async (titre, date, nom) => {
+    const tmpl = TASK_TEMPLATES.find(x => x.title === titre);
+    const c = grille[titre] && grille[titre][date];
+    setEditCell(null);
+    if (c && c.id) {
+      if (!nom) {
+        setTasks(prev => prev.filter(tk => tk.id !== c.id));
+        await supabase.from('tasks').delete().eq('id', c.id);
+        return;
+      }
+      setTasks(prev => prev.map(tk => tk.id === c.id ? { ...tk, assignee: nom } : tk));
+      await supabase.from('tasks').update({ assignee_name: nom }).eq('id', c.id);
+    } else if (nom) {
+      const { data } = await supabase.from('tasks').insert({
+        title: titre, assignee_name: nom, category: tmpl ? tmpl.category : 'Autre',
+        priority: tmpl ? (PRIO_TO_DB[tmpl.priority] || 'medium') : 'medium',
+        status: 'todo', due_date: date, completed_by_name: null,
+      }).select().single();
+      if (data) setTasks(prev => [...prev, toAppTask(data)]);
+    }
+  };
+
+  const retirerJour = async (titre, date) => {
+    const c = grille[titre] && grille[titre][date];
+    if (!c || !c.id) return;
+    setTasks(prev => prev.filter(tk => tk.id !== c.id));
+    await supabase.from('tasks').delete().eq('id', c.id);
+  };
+
+  const retirerSemaine = async (titre) => {
+    const ids = jours.map(d => grille[titre] && grille[titre][d]).filter(Boolean).map(c => c.id);
+    if (!ids.length) return;
+    if (!confirm(`Retirer « ${titre} » pour toute la semaine du ${fmt(jours[0])} au ${fmt(jours[5])} ?`)) return;
+    setTasks(prev => prev.filter(tk => !ids.includes(tk.id)));
+    await supabase.from('tasks').delete().in('id', ids);
+  };
+
+  const copierSemaineSuivante = async () => {
+    const cibleDates = jours.map(d => decalerJours(d, 7));
+    const aCopier = tasks.filter(tk => jours.includes(tk.dueDate));
+    if (!aCopier.length) { alert('Cette semaine est vide, rien à copier.'); return; }
+    const cibleExistante = tasks.some(tk => cibleDates.includes(tk.dueDate));
+    if (cibleExistante && !confirm('La semaine suivante contient déjà des tâches. Les remplacer par une copie de cette semaine ?')) return;
+    setBusy(true);
+    if (cibleExistante) {
+      await supabase.from('tasks').delete().in('due_date', cibleDates);
+      setTasks(prev => prev.filter(tk => !cibleDates.includes(tk.dueDate)));
+    }
+    const inserts = aCopier.map(tk => ({
+      title: tk.title, assignee_name: tk.assignee, category: tk.category,
+      priority: PRIO_TO_DB[tk.priority] || 'medium', status: 'todo',
+      due_date: decalerJours(tk.dueDate, 7), completed_by_name: null,
+    }));
+    const { data } = await supabase.from('tasks').insert(inserts).select();
+    if (data) setTasks(prev => [...prev, ...data.map(toAppTask)]);
+    setBusy(false);
+    setWeekStart(addDays(weekStart, 7));
+  };
+
+  const preremplirEquitable = async () => {
+    if (tasks.some(tk => jours.includes(tk.dueDate)) && !confirm('Remplacer les tâches de cette semaine par une répartition équitable ?')) return;
+    setBusy(true);
+    await supabase.from('tasks').delete().in('due_date', jours);
+    let restantes = tasks.filter(tk => !jours.includes(tk.dueDate));
+    const nouvelles = [];
+    for (const date of jours) {
+      const presents = employees
+        .map(u => ({ u, shift: (schedule[u.name] || {})[date] || null }))
+        .filter(({ shift }) => estPresent(shift))
+        .filter(({ u }) => !EXCLUS.includes(u.name))
+        .map(({ u, shift }) => ({ name: u.name, isGerant: u.role === 'gerant', ouverture: travailleOuverture(shift), fermeture: travailleFermeture(shift) }));
+      if (!presents.length) continue; // jour fermé -> reste vide
+      const heures7j = {};
+      presents.forEach(p => {
+        let h = 0;
+        for (let i = 0; i <= 6; i++) h += calcHours((schedule[p.name] || {})[addDays(date, -i)] || '');
+        heures7j[p.name] = h > 0 ? h : 1;
+      });
+      const { data: hist } = await supabase.from('tasks').select('assignee_name,title,due_date').gte('due_date', addDays(date, -7)).lt('due_date', date);
+      const historique = [
+        ...(hist || []).map(r => ({ assignee: r.assignee_name, title: r.title, due_date: r.due_date })),
+        ...nouvelles.filter(n => n.due_date >= addDays(date, -7) && n.due_date < date).map(n => ({ assignee: n.assignee_name, title: n.title, due_date: n.due_date })),
+      ];
+      const affectations = repartir({ taches: TASK_TEMPLATES, presents, historique, heures7j, seed: 1 });
+      affectations.forEach(a => {
+        if (!a.assignee) return;
+        nouvelles.push({ title: a.title, assignee_name: a.assignee, category: a.category, priority: PRIO_TO_DB[a.priority] || 'medium', status: 'todo', due_date: date, completed_by_name: null });
+      });
+    }
+    if (nouvelles.length) {
+      const { data } = await supabase.from('tasks').insert(nouvelles).select();
+      if (data) restantes = [...restantes, ...data.map(toAppTask)];
+    }
+    setTasks(restantes);
+    setBusy(false);
+  };
+
+  const cell = { padding: "6px 8px", borderBottom: `1px solid ${t.border}`, borderRight: `1px solid ${t.border}`, fontSize: 12, fontFamily: F, textAlign: "center", minWidth: 78 };
+
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
+        <button onClick={() => setWeekStart(addDays(weekStart, -7))} style={{ padding: "8px 12px", borderRadius: 8, border: `1px solid ${t.border}`, background: t.surface, color: t.text, cursor: "pointer", fontFamily: F }}>&larr;</button>
+        <div style={{ fontSize: 14, fontWeight: 700, fontFamily: F, minWidth: 170, textAlign: "center" }}>{fmt(jours[0])} &mdash; {fmt(jours[5])}</div>
+        <button onClick={() => setWeekStart(addDays(weekStart, 7))} style={{ padding: "8px 12px", borderRadius: 8, border: `1px solid ${t.border}`, background: t.surface, color: t.text, cursor: "pointer", fontFamily: F }}>&rarr;</button>
+        <div style={{ flex: 1 }} />
+        <button disabled={busy} onClick={preremplirEquitable} style={{ padding: "9px 14px", borderRadius: 8, border: `1.5px solid ${t.primary}`, background: "transparent", color: t.primary, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: F, opacity: busy ? 0.5 : 1 }}>⚖️ Pré-remplir équitablement</button>
+        <button disabled={busy} onClick={copierSemaineSuivante} style={{ padding: "9px 14px", borderRadius: 8, border: "none", background: t.primary, color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: F, opacity: busy ? 0.5 : 1 }}>📋 Copier vers la semaine suivante</button>
+      </div>
+
+      <div style={{ overflowX: "auto" }}>
+        <table style={{ borderCollapse: "collapse", width: "100%", background: t.surface }}>
+          <thead>
+            <tr>
+              <th style={{ ...cell, textAlign: "left", fontWeight: 700, minWidth: 220, background: t.surfaceAlt }}>Tâche</th>
+              {jours.map((d, i) => (
+                <th key={d} style={{ ...cell, fontWeight: 700, background: t.surfaceAlt }}>{JOURS_NOMS[i]}<div style={{ fontSize: 10, color: t.textMuted, fontWeight: 400 }}>{fmtShort(d)}</div></th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {groupes.map(g => (
+              <Fragment key={g.cle}>
+                <tr><td colSpan={7} style={{ padding: "8px 10px", fontWeight: 700, fontSize: 12, fontFamily: F, background: t.surfaceAlt, color: t.primary }}>{g.titre}</td></tr>
+                {TASK_TEMPLATES.filter(tk => tk.creneau === g.cle).map(tk => {
+                  const corvee = CORVEES.has(tk.title);
+                  return (
+                    <tr key={tk.title}>
+                      <td style={{ ...cell, textAlign: "left", fontWeight: 500 }}>{corvee && <span style={{ color: t.warning || '#F97316', marginRight: 4 }}>●</span>}{tk.title}{jours.some(d => grille[tk.title] && grille[tk.title][d]) && <button onClick={() => retirerSemaine(tk.title)} title="Retirer cette tâche toute la semaine" style={{ marginLeft: 6, border: "none", background: "transparent", color: t.textMuted, cursor: "pointer", fontSize: 12 }}>✕</button>}</td>
+                      {jours.map(d => {
+                        const c = grille[tk.title] && grille[tk.title][d];
+                        const enEdition = editCell && editCell.title === tk.title && editCell.date === d;
+                        if (enEdition) {
+                          const presents = presentsJour(d);
+                          const noms = [...presents, ...employees.map(e => e.name).filter(n => !presents.includes(n))];
+                          return (
+                            <td key={d} style={cell}>
+                              <select autoFocus value={c ? c.assignee : ''} onChange={e => assignerCellule(tk.title, d, e.target.value)} onBlur={() => setEditCell(null)} style={{ width: "100%", fontSize: 12, fontFamily: F, padding: 2 }}>
+                                <option value="">— personne —</option>
+                                {noms.map(n => <option key={n} value={n}>{n}</option>)}
+                              </select>
+                            </td>
+                          );
+                        }
+                        return (
+                          <td key={d} onClick={() => setEditCell({ title: tk.title, date: d })} style={{ ...cell, cursor: "pointer", background: c && corvee ? '#F9731612' : 'transparent', color: c ? t.text : t.textMuted }}>
+                            {c ? (
+                              <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                                {c.assignee}
+                                <button onClick={(e) => { e.stopPropagation(); retirerJour(tk.title, d); }} title="Retirer pour ce jour" style={{ border: "none", background: "transparent", color: t.textMuted, cursor: "pointer", fontSize: 11, padding: 0, lineHeight: 1 }}>✕</button>
+                              </span>
+                            ) : '—'}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
+                })}
+              </Fragment>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};
+
 // ═══════════════════════════════════════
 // ─── MAIN APP ───
 // ═══════════════════════════════════════
@@ -1475,57 +1670,56 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
   const [editingTemplateIdx, setEditingTemplateIdx] = useState(null);
 
   // Calcule la distribution des tâches selon les horaires du jour
-  const computeTemplateAssignments = (date) => {
-    const allUsers = usersData.filter(u => u.name !== "Jean Claude");
-    const empShifts = allUsers.map(u => ({ name: u.name, shift: (schedule[u.name] || {})[date] || null }));
-    let presents = empShifts.filter(e => estPresent(e.shift));
-    // Fallback : si aucun planning pour ce jour, on prend tous les employés actifs
-    const noPlanning = presents.length === 0;
-    if (noPlanning) presents = allUsers.map(u => ({ name: u.name, shift: '10h-22h' }));
-    const ouverture = presents.filter(e => travailleOuverture(e.shift));
-    const fermeture = presents.filter(e => travailleFermeture(e.shift));
-    const assignments = [];
-    const pools = { ouverture, fermeture, service: presents };
-    let idxO = 0, idxF = 0, idxS = 0;
-    TASK_TEMPLATES.forEach(task => {
-      let pool = pools[task.creneau];
-      if (!pool.length) pool = presents;
-      let idx = task.creneau === 'ouverture' ? idxO : task.creneau === 'fermeture' ? idxF : idxS;
-      const emp = pool[idx % pool.length];
-      if (task.creneau === 'ouverture') idxO++;
-      else if (task.creneau === 'fermeture') idxF++;
-      else idxS++;
-      assignments.push({ ...task, assignee: emp.name, noPlanning });
+  const seedRef = useRef(1);
+  const EXCLUS_REPARTITION = ['Sarah'];
+
+  const genererTemplate = async (date, seed) => {
+    // Présents du jour (employees exclut déjà Jean-Claude), Sarah retirée
+    let presents = employees
+      .map(u => ({ u, shift: (schedule[u.name] || {})[date] || null }))
+      .filter(({ shift }) => estPresent(shift))
+      .filter(({ u }) => !EXCLUS_REPARTITION.includes(u.name))
+      .map(({ u, shift }) => ({
+        name: u.name,
+        isGerant: u.role === 'gerant',
+        ouverture: travailleOuverture(shift),
+        fermeture: travailleFermeture(shift),
+      }));
+    // Pas de planning ce jour : on prend tous les actifs, présents toute la journée
+    if (!presents.length) {
+      presents = employees
+        .filter(u => !EXCLUS_REPARTITION.includes(u.name))
+        .map(u => ({ name: u.name, isGerant: u.role === 'gerant', ouverture: true, fermeture: true }));
+    }
+    // Heures de présence sur 7 jours glissants (aujourd'hui inclus)
+    const heures7j = {};
+    presents.forEach(p => {
+      let h = 0;
+      for (let i = 0; i <= 6; i++) h += calcHours((schedule[p.name] || {})[addDays(date, -i)] || '');
+      heures7j[p.name] = h > 0 ? h : 1;
     });
-    return assignments;
+    // Historique des 7 jours précédents
+    let historique;
+    try {
+      const { data } = await supabase
+        .from('tasks')
+        .select('assignee_name,title,due_date')
+        .gte('due_date', addDays(date, -7))
+        .lt('due_date', date);
+      historique = (data || []).map(r => ({ assignee: r.assignee_name, title: r.title, due_date: r.due_date }));
+    } catch {
+      historique = [];
+    }
+    setTemplateAssignments(repartir({ taches: TASK_TEMPLATES, presents, historique, heures7j, seed }));
   };
 
-  const openTemplateModal = () => {
+  const openTemplateModal = async () => {
     const d = viewDate || TODAY;
-    setTemplateAssignments(computeTemplateAssignments(d));
     setTemplateDate(d);
     setEditingTemplateIdx(null);
+    seedRef.current = 1;
     setShowTemplateModal(true);
-  };
-
-  const shuffleTemplateAssignments = () => {
-    const allUsers = usersData.filter(u => u.name !== "Jean Claude");
-    const empShifts = allUsers.map(u => ({ name: u.name, shift: (schedule[u.name] || {})[templateDate] || null }));
-    const presents = empShifts.filter(e => estPresent(e.shift));
-    if (!presents.length) return;
-    // Mélanger aléatoirement les assignations en respectant les créneaux
-    const shuffled = presents.sort(() => Math.random() - 0.5);
-    const ouverture = presents.filter(e => travailleOuverture(e.shift)).sort(() => Math.random() - 0.5);
-    const fermeture = presents.filter(e => travailleFermeture(e.shift)).sort(() => Math.random() - 0.5);
-    let idxO = 0, idxF = 0, idxS = 0;
-    setTemplateAssignments(templateAssignments.map(task => {
-      let pool = task.creneau === 'ouverture' ? ouverture : task.creneau === 'fermeture' ? fermeture : shuffled;
-      if (!pool.length) pool = shuffled;
-      let idx = task.creneau === 'ouverture' ? idxO : task.creneau === 'fermeture' ? idxF : idxS;
-      const emp = pool[idx % pool.length];
-      if (task.creneau === 'ouverture') idxO++; else if (task.creneau === 'fermeture') idxF++; else idxS++;
-      return { ...task, assignee: emp.name };
-    }));
+    await genererTemplate(d, seedRef.current);
   };
 
   const loadTemplate = async () => {
@@ -1803,12 +1997,14 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
             </div>
             {showHistory && isGerant ? <HistoryView tasks={tasks} t={t} /> : (<>
               <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 16, flexWrap: "wrap" }}>
-                {isGerant && <div style={{ display: "flex", background: t.surfaceAlt, borderRadius: 8, border: `1px solid ${t.border}`, overflow: "hidden" }}>{[{ key: "checklist", icon: I.list, label: "Liste" }, { key: "kanban", icon: I.kanban, label: "Kanban" }].map(v => (<button key={v.key} onClick={() => setTaskView(v.key)} style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, fontFamily: F, background: taskView === v.key ? t.primary : "transparent", color: taskView === v.key ? "#fff" : t.textMuted }}>{v.icon}{v.label}</button>))}</div>}
-                {isGerant && <select value={fA} onChange={e => setFA(e.target.value)} style={ss}><option value="">Tous</option>{employees.map(e => <option key={e.name}>{e.name}</option>)}</select>}
-                <select value={fC} onChange={e => setFC(e.target.value)} style={ss}><option value="">Toutes catégories</option>{categoryList.map(c => <option key={c}>{c}</option>)}</select>
+                {isGerant && <div style={{ display: "flex", background: t.surfaceAlt, borderRadius: 8, border: `1px solid ${t.border}`, overflow: "hidden" }}>{[{ key: "checklist", icon: I.list, label: "Liste" }, { key: "kanban", icon: I.kanban, label: "Kanban" }, { key: "semaine", icon: "🗓️", label: "Semaine" }].map(v => (<button key={v.key} onClick={() => setTaskView(v.key)} style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, fontFamily: F, background: taskView === v.key ? t.primary : "transparent", color: taskView === v.key ? "#fff" : t.textMuted }}>{v.icon}{v.label}</button>))}</div>}
+                {isGerant && taskView !== "semaine" && <select value={fA} onChange={e => setFA(e.target.value)} style={ss}><option value="">Tous</option>{employees.map(e => <option key={e.name}>{e.name}</option>)}</select>}
+                {taskView !== "semaine" && (<select value={fC} onChange={e => setFC(e.target.value)} style={ss}><option value="">Toutes catégories</option>{categoryList.map(c => <option key={c}>{c}</option>)}</select>)}
               </div>
-              {isGerant && <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, 1fr)", gap: isMobile ? 8 : 12, marginBottom: isMobile ? 12 : 20 }}>{[{label:"À faire",val:viewTasks.filter(tk=>tk.status==="todo").length,color:t.primary},{label:"En cours",val:viewTasks.filter(tk=>tk.status==="doing").length,color:t.warning},{label:"Terminées",val:viewTasks.filter(tk=>tk.status==="done").length,color:t.success},{label:"Total",val:viewTasks.length,color:t.textMuted}].map((s,i)=>(<div key={i} style={{ background:t.surface, borderRadius:10, padding:"14px 18px", border:`1px solid ${t.border}`, display:"flex", alignItems:"center", gap:12 }}><span style={{ width:10, height:10, borderRadius:"50%", background:s.color }} /><div><div style={{ fontSize:12, color:t.textMuted }}>{s.label}</div><div style={{ fontSize:22, fontWeight:700 }}>{s.val}</div></div></div>))}</div>}
-              {(isGerant && taskView === "kanban") ? <KanbanView tasks={viewTasks} onMove={moveTask} onDelete={delTask} t={t} fA={fA} fC={fC} /> : <ChecklistView tasks={viewTasks} onToggle={toggleTask} onDelete={delTask} onEdit={openEditTask} t={t} fA={fA} fC={fC} isGerant={isGerant} currentUserName={currentUser.name} />}
+              {isGerant && taskView !== "semaine" && <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, 1fr)", gap: isMobile ? 8 : 12, marginBottom: isMobile ? 12 : 20 }}>{[{label:"À faire",val:viewTasks.filter(tk=>tk.status==="todo").length,color:t.primary},{label:"En cours",val:viewTasks.filter(tk=>tk.status==="doing").length,color:t.warning},{label:"Terminées",val:viewTasks.filter(tk=>tk.status==="done").length,color:t.success},{label:"Total",val:viewTasks.length,color:t.textMuted}].map((s,i)=>(<div key={i} style={{ background:t.surface, borderRadius:10, padding:"14px 18px", border:`1px solid ${t.border}`, display:"flex", alignItems:"center", gap:12 }}><span style={{ width:10, height:10, borderRadius:"50%", background:s.color }} /><div><div style={{ fontSize:12, color:t.textMuted }}>{s.label}</div><div style={{ fontSize:22, fontWeight:700 }}>{s.val}</div></div></div>))}</div>}
+              {(isGerant && taskView === "semaine") ? <SemaineView tasks={tasks} setTasks={setTasks} employees={employees} schedule={schedule} t={t} />
+                : (isGerant && taskView === "kanban") ? <KanbanView tasks={viewTasks} onMove={moveTask} onDelete={delTask} t={t} fA={fA} fC={fC} />
+                : <ChecklistView tasks={viewTasks} onToggle={toggleTask} onDelete={delTask} onEdit={openEditTask} t={t} fA={fA} fC={fC} isGerant={isGerant} currentUserName={currentUser.name} />}
             </>)}
           </div>
         )}
@@ -1955,7 +2151,7 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
             {/* Date */}
             <div style={{ padding:"0 24px 16px" }}>
               <div style={{ fontSize:11, fontWeight:700, letterSpacing:"0.1em", textTransform:"uppercase", color:t.textMuted, marginBottom:8, fontFamily:F }}>Date d'assignation</div>
-              <input type="date" value={templateDate} onChange={e => { setTemplateDate(e.target.value); setTemplateAssignments(computeTemplateAssignments(e.target.value)); setEditingTemplateIdx(null); }}
+              <input type="date" value={templateDate} onChange={async e => { setTemplateDate(e.target.value); setEditingTemplateIdx(null); await genererTemplate(e.target.value, seedRef.current); }}
                 style={{ width:"100%", padding:"10px 14px", borderRadius:10, border:`1.5px solid ${t.border}`, fontFamily:F, fontSize:14, color:t.text, background:t.surface, outline:"none" }} />
             </div>
             {/* Info planning */}
@@ -2005,7 +2201,7 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
             })}
             {/* Actions */}
             <div style={{ padding:"16px 24px 0", display:"flex", flexDirection:"column", gap:10 }}>
-              <button onClick={shuffleTemplateAssignments} style={{ padding:"10px", borderRadius:10, border:`1.5px solid ${t.primary}`, background:"transparent", color:t.primary, fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:F }}>🔀 Répartir aléatoirement</button>
+              <button onClick={async () => { seedRef.current = seedRef.current + 1; await genererTemplate(templateDate, seedRef.current); }} style={{ padding:"10px", borderRadius:10, border:`1.5px solid ${t.primary}`, background:"transparent", color:t.primary, fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:F }}>🔀 Régénérer</button>
               <button onClick={loadTemplate} disabled={!templateAssignments.length} style={{ padding:"14px", borderRadius:10, border:"none", background:templateAssignments.length ? t.primary : t.border, color:templateAssignments.length ? "#fff" : t.textMuted, fontSize:15, fontWeight:700, cursor:templateAssignments.length ? "pointer" : "default", fontFamily:F, boxShadow:templateAssignments.length ? "0 4px 14px rgba(220,38,38,0.35)" : "none" }}>
                 📋 Charger {templateAssignments.length} tâches
               </button>
