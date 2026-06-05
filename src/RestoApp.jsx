@@ -1325,7 +1325,7 @@ const PlanningModule = ({ t, schedule, setSchedule, pointage, isGerant, currentU
 // ═══════════════════════════════════════
 // ─── SETTINGS MODULE ───
 // ═══════════════════════════════════════
-const SettingsModule = ({ t, F }) => {
+const SettingsModule = ({ t, F, authUser }) => {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -1333,6 +1333,22 @@ const SettingsModule = ({ t, F }) => {
   const [role, setRole] = useState('employe');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null); // { success, message }
+  // Changement de mon propre mot de passe
+  const [npNew, setNpNew] = useState('');
+  const [npConfirm, setNpConfirm] = useState('');
+  const [npShow, setNpShow] = useState(false);
+  const [npLoading, setNpLoading] = useState(false);
+  const [npResult, setNpResult] = useState(null); // { success, message }
+
+  const changePassword = async () => {
+    if (npNew.length < 6) { setNpResult({ success: false, message: 'Le mot de passe doit faire au moins 6 caractères.' }); return; }
+    if (npNew !== npConfirm) { setNpResult({ success: false, message: 'Les deux mots de passe ne correspondent pas.' }); return; }
+    setNpLoading(true); setNpResult(null);
+    const { error } = await supabase.auth.updateUser({ password: npNew });
+    if (error) setNpResult({ success: false, message: error.message || 'Erreur lors de la mise à jour.' });
+    else { setNpResult({ success: true, message: 'Mot de passe mis à jour.' }); setNpNew(''); setNpConfirm(''); }
+    setNpLoading(false);
+  };
 
   const createAccount = async () => {
     if (!name.trim() || !email.trim() || !password.trim()) {
@@ -1390,6 +1406,33 @@ const SettingsModule = ({ t, F }) => {
 
   return (
     <div style={{ maxWidth: 560 }}>
+      <div style={{ background: t.surface, borderRadius: 16, border: `1px solid ${t.border}`, padding: 28, marginBottom: 20 }}>
+        <h2 style={{ fontSize: 17, fontWeight: 700, margin: '0 0 6px', fontFamily: F }}>Mon mot de passe</h2>
+        <p style={{ fontSize: 14, color: t.textMuted, margin: '0 0 20px', fontFamily: F }}>Compte connecté : <strong style={{ color: t.text }}>{authUser?.email || '—'}</strong></p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div>
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: t.textMuted, marginBottom: 6, fontFamily: F }}>Nouveau mot de passe</label>
+            <div style={{ position: 'relative' }}>
+              <input type={npShow ? 'text' : 'password'} value={npNew} onChange={e => setNpNew(e.target.value)} placeholder="Minimum 6 caractères" style={{ ...inp, paddingRight: 40 }} />
+              <button type="button" onClick={() => setNpShow(!npShow)} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: t.textMuted, display: 'flex', alignItems: 'center', padding: 4 }} aria-label={npShow ? 'Masquer' : 'Afficher'}>
+                {npShow ? I.eyeOff : I.eyeOn}
+              </button>
+            </div>
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: t.textMuted, marginBottom: 6, fontFamily: F }}>Confirmer le nouveau mot de passe</label>
+            <input type={npShow ? 'text' : 'password'} value={npConfirm} onChange={e => setNpConfirm(e.target.value)} placeholder="Retapez le mot de passe" style={inp} />
+          </div>
+          {npResult && (
+            <div style={{ padding: '10px 14px', borderRadius: 8, fontSize: 13, fontWeight: 500, fontFamily: F, background: npResult.success ? t.success + '12' : t.danger + '12', color: npResult.success ? t.success : t.danger, border: `1px solid ${npResult.success ? t.success : t.danger}22` }}>
+              {npResult.success ? '✓ ' : '✗ '}{npResult.message}
+            </div>
+          )}
+          <button onClick={changePassword} disabled={npLoading} style={{ padding: '12px 0', borderRadius: 10, border: 'none', background: npLoading ? t.primary + '80' : t.primary, color: '#fff', fontSize: 14, fontWeight: 700, cursor: npLoading ? 'not-allowed' : 'pointer', fontFamily: F, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+            {npLoading ? 'Mise à jour...' : 'Mettre à jour'}
+          </button>
+        </div>
+      </div>
       <div style={{ background: t.surface, borderRadius: 16, border: `1px solid ${t.border}`, padding: 28, marginBottom: 20 }}>
         <h2 style={{ fontSize: 17, fontWeight: 700, margin: '0 0 6px', fontFamily: F }}>Gestion des comptes</h2>
         <p style={{ fontSize: 14, color: t.textMuted, margin: '0 0 24px', fontFamily: F }}>Créer un compte pour un nouvel employé ou gérant.</p>
@@ -2066,7 +2109,7 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
 
         {/* PARAMÈTRES */}
         {effectiveSection === "settings" && isGerant && (
-          <SettingsModule t={t} F={F} />
+          <SettingsModule t={t} F={F} authUser={authUser} />
         )}
 
         {/* Placeholder */}
