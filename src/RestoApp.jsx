@@ -1,6 +1,8 @@
 import { useState, useRef, useMemo, useEffect, Fragment } from "react";
 import { supabase } from './lib/supabase';
 import { repartir, CORVEES, pivotSemaine, decalerJours } from './lib/taskDispatch';
+import { I } from './lib/icons';
+import SettingsModule from './components/SettingsModule';
 
 // ═══════════════════════════════════════
 // ─── HELPERS ───
@@ -164,33 +166,6 @@ const F = "'Noto Sans KR', sans-serif";
 // ═══════════════════════════════════════
 // ─── ICONS ───
 // ═══════════════════════════════════════
-const I = {
-  dashboard: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>,
-  users: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>,
-  box: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>,
-  orders: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>,
-  euro: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><path d="M12 18V6"/></svg>,
-  settings: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>,
-  tasks: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>,
-  clock: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>,
-  check: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>,
-  chevron: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>,
-  chevronL: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>,
-  bell: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>,
-  palette: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="13.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="10.5" r="2.5"/><circle cx="8.5" cy="7.5" r="2.5"/><circle cx="6.5" cy="12.5" r="2.5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.9 0 1.7-.1 2.5-.3.4-.1.7-.5.7-.9 0-.3-.1-.5-.3-.7-.2-.2-.3-.5-.3-.8 0-.7.5-1.2 1.2-1.2H17c2.8 0 5-2.2 5-5 0-4.9-4.5-9-10-9z"/></svg>,
-  plus: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>,
-  eyeOn: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>,
-  eyeOff: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>,
-  list: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>,
-  kanban: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="5" height="18" rx="1"/><rect x="10" y="3" width="5" height="12" rx="1"/><rect x="17" y="3" width="5" height="15" rx="1"/></svg>,
-  history: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/><path d="M4.93 4.93l2.83 2.83"/></svg>,
-  trash: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>,
-  x: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>,
-  calendar: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>,
-  warning: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>,
-  swap: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>,
-  pin: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="6" y="2" width="12" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>,
-};
 
 // ═══════════════════════════════════════
 // ─── SHARED COMPONENTS ───
@@ -1325,167 +1300,6 @@ const PlanningModule = ({ t, schedule, setSchedule, pointage, isGerant, currentU
 // ═══════════════════════════════════════
 // ─── SETTINGS MODULE ───
 // ═══════════════════════════════════════
-const SettingsModule = ({ t, F, authUser }) => {
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [showPwd, setShowPwd] = useState(false);
-  const [role, setRole] = useState('employe');
-  const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState(null); // { success, message }
-  // Changement de mon propre mot de passe
-  const [npNew, setNpNew] = useState('');
-  const [npConfirm, setNpConfirm] = useState('');
-  const [npShow, setNpShow] = useState(false);
-  const [npLoading, setNpLoading] = useState(false);
-  const [npResult, setNpResult] = useState(null); // { success, message }
-
-  const changePassword = async () => {
-    if (npNew.length < 6) { setNpResult({ success: false, message: 'Le mot de passe doit faire au moins 6 caractères.' }); return; }
-    if (npNew !== npConfirm) { setNpResult({ success: false, message: 'Les deux mots de passe ne correspondent pas.' }); return; }
-    setNpLoading(true); setNpResult(null);
-    const { error } = await supabase.auth.updateUser({ password: npNew });
-    if (error) setNpResult({ success: false, message: error.message || 'Erreur lors de la mise à jour.' });
-    else { setNpResult({ success: true, message: 'Mot de passe mis à jour.' }); setNpNew(''); setNpConfirm(''); }
-    setNpLoading(false);
-  };
-
-  const createAccount = async () => {
-    if (!name.trim() || !email.trim() || !password.trim()) {
-      setResult({ success: false, message: 'Tous les champs sont requis.' });
-      return;
-    }
-    if (password.length < 6) {
-      setResult({ success: false, message: 'Le mot de passe doit faire au moins 6 caractères.' });
-      return;
-    }
-    setLoading(true);
-    setResult(null);
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const res = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-user`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session.access_token}`,
-            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
-          },
-          body: JSON.stringify({ email: email.trim(), password, full_name: name.trim(), role }),
-        }
-      );
-      const data = await res.json();
-      if (!data.success) {
-        setResult({ success: false, message: data.error || 'Erreur lors de la création.' });
-        setLoading(false);
-        return;
-      }
-
-      // Créer automatiquement la fiche employé dans Équipe
-      await supabase.from('employees').upsert({
-        name: name.trim(),
-        email: email.trim(),
-        role: role,
-        poste: role === 'gerant' ? 'Gérant' : 'Polyvalent',
-        taux_h: 11.27,
-        heures_hebdo: 35,
-        contrat: 'CDI',
-        active: true,
-      }, { onConflict: 'email' });
-
-      setResult({ success: true, message: `Compte et fiche employé créés pour ${name.trim()}.` });
-      setName(''); setEmail(''); setPassword(''); setRole('employe');
-    } catch (e) {
-      setResult({ success: false, message: 'Erreur réseau : ' + e.message });
-    }
-    setLoading(false);
-  };
-
-  const inp = { width: '100%', padding: '10px 14px', borderRadius: 10, border: `1.5px solid ${t.border}`, fontSize: 14, fontFamily: F, background: t.bg, color: t.text, outline: 'none', boxSizing: 'border-box' };
-
-  return (
-    <div style={{ maxWidth: 560 }}>
-      <div style={{ background: t.surface, borderRadius: 16, border: `1px solid ${t.border}`, padding: 28, marginBottom: 20 }}>
-        <h2 style={{ fontSize: 17, fontWeight: 700, margin: '0 0 6px', fontFamily: F }}>Mon mot de passe</h2>
-        <p style={{ fontSize: 14, color: t.textMuted, margin: '0 0 20px', fontFamily: F }}>Compte connecté : <strong style={{ color: t.text }}>{authUser?.email || '—'}</strong></p>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <div>
-            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: t.textMuted, marginBottom: 6, fontFamily: F }}>Nouveau mot de passe</label>
-            <div style={{ position: 'relative' }}>
-              <input type={npShow ? 'text' : 'password'} value={npNew} onChange={e => setNpNew(e.target.value)} placeholder="Minimum 6 caractères" style={{ ...inp, paddingRight: 40 }} />
-              <button type="button" onClick={() => setNpShow(!npShow)} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: t.textMuted, display: 'flex', alignItems: 'center', padding: 4 }} aria-label={npShow ? 'Masquer' : 'Afficher'}>
-                {npShow ? I.eyeOff : I.eyeOn}
-              </button>
-            </div>
-          </div>
-          <div>
-            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: t.textMuted, marginBottom: 6, fontFamily: F }}>Confirmer le nouveau mot de passe</label>
-            <input type={npShow ? 'text' : 'password'} value={npConfirm} onChange={e => setNpConfirm(e.target.value)} placeholder="Retapez le mot de passe" style={inp} />
-          </div>
-          {npResult && (
-            <div style={{ padding: '10px 14px', borderRadius: 8, fontSize: 13, fontWeight: 500, fontFamily: F, background: npResult.success ? t.success + '12' : t.danger + '12', color: npResult.success ? t.success : t.danger, border: `1px solid ${npResult.success ? t.success : t.danger}22` }}>
-              {npResult.success ? '✓ ' : '✗ '}{npResult.message}
-            </div>
-          )}
-          <button onClick={changePassword} disabled={npLoading} style={{ padding: '12px 0', borderRadius: 10, border: 'none', background: npLoading ? t.primary + '80' : t.primary, color: '#fff', fontSize: 14, fontWeight: 700, cursor: npLoading ? 'not-allowed' : 'pointer', fontFamily: F, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-            {npLoading ? 'Mise à jour...' : 'Mettre à jour'}
-          </button>
-        </div>
-      </div>
-      <div style={{ background: t.surface, borderRadius: 16, border: `1px solid ${t.border}`, padding: 28, marginBottom: 20 }}>
-        <h2 style={{ fontSize: 17, fontWeight: 700, margin: '0 0 6px', fontFamily: F }}>Gestion des comptes</h2>
-        <p style={{ fontSize: 14, color: t.textMuted, margin: '0 0 24px', fontFamily: F }}>Créer un compte pour un nouvel employé ou gérant.</p>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <div>
-            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: t.textMuted, marginBottom: 6, fontFamily: F }}>Prénom et nom</label>
-            <input value={name} onChange={e => setName(e.target.value)} placeholder="Ex : Yuna Kim" style={inp} />
-          </div>
-          <div>
-            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: t.textMuted, marginBottom: 6, fontFamily: F }}>Adresse email</label>
-            <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="yuna@kimiko.fr" style={inp} />
-          </div>
-          <div>
-            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: t.textMuted, marginBottom: 6, fontFamily: F }}>Mot de passe temporaire</label>
-            <div style={{ position: 'relative' }}>
-              <input type={showPwd ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)} placeholder="Minimum 6 caractères" style={{ ...inp, paddingRight: 40 }} />
-              <button type="button" onClick={() => setShowPwd(!showPwd)} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: t.textMuted, display: 'flex', alignItems: 'center', padding: 4 }} aria-label={showPwd ? 'Masquer' : 'Afficher'}>
-                {showPwd ? I.eyeOff : I.eyeOn}
-              </button>
-            </div>
-          </div>
-          <div>
-            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: t.textMuted, marginBottom: 8, fontFamily: F }}>Rôle</label>
-            <div style={{ display: 'flex', gap: 8 }}>
-              {[{ val: 'employe', label: 'Employé' }, { val: 'gerant', label: 'Gérant salarié' }].map(r => (
-                <button key={r.val} onClick={() => setRole(r.val)} style={{ flex: 1, padding: '10px 0', borderRadius: 10, border: role === r.val ? 'none' : `1px solid ${t.border}`, background: role === r.val ? t.primary : t.surfaceAlt, color: role === r.val ? '#fff' : t.textMuted, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: F }}>
-                  {r.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {result && (
-            <div style={{ padding: '10px 14px', borderRadius: 8, fontSize: 13, fontWeight: 500, fontFamily: F, background: result.success ? t.success + '12' : t.danger + '12', color: result.success ? t.success : t.danger, border: `1px solid ${result.success ? t.success : t.danger}22` }}>
-              {result.success ? '✓ ' : '✗ '}{result.message}
-            </div>
-          )}
-
-          <button onClick={createAccount} disabled={loading} style={{ padding: '12px 0', borderRadius: 10, border: 'none', background: loading ? t.primary + '80' : t.primary, color: '#fff', fontSize: 14, fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer', fontFamily: F, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-            {loading ? 'Création en cours...' : 'Créer le compte'}
-          </button>
-        </div>
-      </div>
-
-      <div style={{ background: t.surface, borderRadius: 16, border: `1px solid ${t.border}`, padding: 20 }}>
-        <p style={{ fontSize: 13, color: t.textMuted, margin: 0, fontFamily: F, lineHeight: 1.6 }}>
-          <strong style={{ color: t.text }}>Note :</strong> Le compte est actif immédiatement, sans email de confirmation. Communiquez le mot de passe temporaire à la personne et invitez-la à le changer.
-        </p>
-      </div>
-    </div>
-  );
-};
 
 const SemaineView = ({ tasks, setTasks, employees, schedule, t }) => {
   const [weekStart, setWeekStart] = useState(WEEK_START); // lundi de la semaine affichée
