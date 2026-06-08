@@ -1,12 +1,14 @@
-import { useState, useRef, useMemo, useEffect, Fragment } from "react";
+import { useState, useRef, useMemo, useEffect, Fragment, lazy, Suspense } from "react";
 import { supabase } from './lib/supabase';
 import { repartir, CORVEES, pivotSemaine, decalerJours } from './lib/taskDispatch';
 import { I } from './lib/icons';
-import SettingsModule from './components/SettingsModule';
-import StocksModule from './components/StocksModule';
-import EquipeModule from './components/EquipeModule';
-import PlanningModule from './components/PlanningModule';
-import SemaineView from './components/SemaineView';
+const SettingsModule = lazy(() => import('./components/SettingsModule'));
+const StocksModule = lazy(() => import('./components/StocksModule'));
+const EquipeModule = lazy(() => import('./components/EquipeModule'));
+const PlanningModule = lazy(() => import('./components/PlanningModule'));
+const SemaineView = lazy(() => import('./components/SemaineView'));
+
+const Loading = () => (<div style={{ padding: 40, textAlign: "center", fontSize: 14, opacity: 0.6, fontFamily: "'Noto Sans KR', sans-serif" }}>Chargement…</div>);
 import { TODAY, getMonday, WEEK_START, TODAY_LABEL, BANNER_IMAGE, fmt, fmtShort, addDays, getWeekDays, getDayName, isOverdue, calcHours, initialUsersData, initialSchedule, initialPointage, categoryList, priorityList, TASK_TEMPLATES, travailleOuverture, travailleFermeture, estPresent, initialTasks, stockCategories, initialProducts, initialSorties, stockAlerts, recentOrders, weeklyCA, themes, F, StatCard, MiniChart, Badge, StatusBadge, PriorityBadge, CategoryTag, OverdueBadge, CompletedByBadge, DateNav, TaskModal, TaskRow, ChecklistView, KanbanView, HistoryView } from './lib/foundation';
 
 // ═══════════════════════════════════════
@@ -398,7 +400,7 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
                 {taskView !== "semaine" && (<select value={fC} onChange={e => setFC(e.target.value)} style={ss}><option value="">Toutes catégories</option>{categoryList.map(c => <option key={c}>{c}</option>)}</select>)}
               </div>
               {isGerant && taskView !== "semaine" && <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, 1fr)", gap: isMobile ? 8 : 12, marginBottom: isMobile ? 12 : 20 }}>{[{label:"À faire",val:viewTasks.filter(tk=>tk.status==="todo").length,color:t.primary},{label:"En cours",val:viewTasks.filter(tk=>tk.status==="doing").length,color:t.warning},{label:"Terminées",val:viewTasks.filter(tk=>tk.status==="done").length,color:t.success},{label:"Total",val:viewTasks.length,color:t.textMuted}].map((s,i)=>(<div key={i} style={{ background:t.surface, borderRadius:10, padding:"14px 18px", border:`1px solid ${t.border}`, display:"flex", alignItems:"center", gap:12 }}><span style={{ width:10, height:10, borderRadius:"50%", background:s.color }} /><div><div style={{ fontSize:12, color:t.textMuted }}>{s.label}</div><div style={{ fontSize:22, fontWeight:700 }}>{s.val}</div></div></div>))}</div>}
-              {(isGerant && taskView === "semaine") ? <SemaineView tasks={tasks} setTasks={setTasks} employees={employees} schedule={schedule} t={t} />
+              {(isGerant && taskView === "semaine") ? <Suspense fallback={<Loading />}><SemaineView tasks={tasks} setTasks={setTasks} employees={employees} schedule={schedule} t={t} /></Suspense>
                 : (isGerant && taskView === "kanban") ? <KanbanView tasks={viewTasks} onMove={moveTask} onDelete={delTask} t={t} fA={fA} fC={fC} />
                 : <ChecklistView key={`cl-${effectiveDate}-${fA}-${fC}`} tasks={viewTasks} onToggle={toggleTask} onDelete={delTask} onEdit={openEditTask} onBulkDelete={delTasks} t={t} fA={fA} fC={fC} isGerant={isGerant} currentUserName={currentUser.name} />}
             </>)}
@@ -407,12 +409,12 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
 
         {/* ÉQUIPE */}
         {effectiveSection === "equipe" && isGerant && (
-          <EquipeModule t={t} employees={employees} usersData={usersData} setUsersData={setUsersData} isMobile={isMobile} />
+          <Suspense fallback={<Loading />}><EquipeModule t={t} employees={employees} usersData={usersData} setUsersData={setUsersData} isMobile={isMobile} /></Suspense>
         )}
 
         {/* PLANNING */}
         {effectiveSection === "planning" && (
-          <PlanningModule t={t} schedule={schedule} setSchedule={setSchedule} pointage={initialPointage} isGerant={isGerant} currentUserName={currentUser.name} employees={employees} />
+          <Suspense fallback={<Loading />}><PlanningModule t={t} schedule={schedule} setSchedule={setSchedule} pointage={initialPointage} isGerant={isGerant} currentUserName={currentUser.name} employees={employees} /></Suspense>
         )}
 
         {/* DASHBOARD */}
@@ -452,12 +454,12 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
 
         {/* STOCKS */}
         {effectiveSection === "stocks" && (
-          <StocksModule t={t} products={products} setProducts={setProducts} sorties={sorties} setSorties={setSorties} isGerant={isGerant} currentUserName={currentUser.name} />
+          <Suspense fallback={<Loading />}><StocksModule t={t} products={products} setProducts={setProducts} sorties={sorties} setSorties={setSorties} isGerant={isGerant} currentUserName={currentUser.name} /></Suspense>
         )}
 
         {/* PARAMÈTRES */}
         {effectiveSection === "settings" && isGerant && (
-          <SettingsModule t={t} F={F} authUser={authUser} />
+          <Suspense fallback={<Loading />}><SettingsModule t={t} F={F} authUser={authUser} /></Suspense>
         )}
 
         {/* Placeholder */}
