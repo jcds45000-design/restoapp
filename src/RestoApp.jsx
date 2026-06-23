@@ -2,6 +2,7 @@ import { useState, useRef, useMemo, useEffect, Fragment, lazy, Suspense } from "
 import { supabase } from './lib/supabase';
 import { repartir, CORVEES, pivotSemaine, decalerJours } from './lib/taskDispatch';
 import { I } from './lib/icons';
+import { findUserIndexByEmail } from './lib/users';
 const SettingsModule = lazy(() => import('./components/SettingsModule'));
 const StocksModule = lazy(() => import('./components/StocksModule'));
 const EquipeModule = lazy(() => import('./components/EquipeModule'));
@@ -188,30 +189,34 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
       // Employés
       const { data: eData } = await supabase.from('employees').select('*').order('name');
       if (eData?.length) {
-        setUsersData(prev => {
-          // Gérants non-salariés (pas dans la table employees) — ex: Jean-Claude
-          const gerantsExternes = prev.filter(u => u.role === 'gerant' && !eData.find(e => e.name === u.name));
-          return [
-            ...gerantsExternes,
-            ...eData.map((e, i) => ({
-              id: i + 1, _uuid: e.id,
-              name: e.name,
-              role: e.role === 'gerant' ? 'gerant' : 'employe',
-              initials: e.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase(),
-              poste: e.poste || 'Équipe',
-              tauxH: parseFloat(e.taux_h) || 11.27,
-              heuresHebdo: parseFloat(e.heures_hebdo) || 35,
-              tel: e.phone || '',
-              email: e.email || '',
-              dateEntree: e.date_entree || e.created_at?.slice(0, 10) || '',
-              contrat: e.contrat || 'CDI',
-              dateFin: e.date_fin || '',
-            })),
-          ];
-        });
+        // Gérants non-salariés (pas dans la table employees) — ex: Jean-Claude
+        const gerantsExternes = initialUsersData.filter(u => u.role === 'gerant' && !eData.find(e => e.name === u.name));
+        const merged = [
+          ...gerantsExternes,
+          ...eData.map((e, i) => ({
+            id: i + 1, _uuid: e.id,
+            name: e.name,
+            role: e.role === 'gerant' ? 'gerant' : 'employe',
+            initials: e.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase(),
+            poste: e.poste || 'Équipe',
+            tauxH: parseFloat(e.taux_h) || 11.27,
+            heuresHebdo: parseFloat(e.heures_hebdo) || 35,
+            tel: e.phone || '',
+            email: e.email || '',
+            dateEntree: e.date_entree || e.created_at?.slice(0, 10) || '',
+            contrat: e.contrat || 'CDI',
+            dateFin: e.date_fin || '',
+          })),
+        ];
+        setUsersData(merged);
+        // Positionne l'utilisateur courant sur le compte réellement connecté (par email).
+        // Sinon (ex. gérant externe sans email), garde le défaut (index 0 = Jean Claude).
+        const idx = findUserIndexByEmail(merged, authUser?.email);
+        if (idx >= 0) setCurrentUserIdx(idx);
       }
     };
     loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const ABSENCE_SHIFTS = ['repos', 'maladie', 'conges', 'absence'];
