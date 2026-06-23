@@ -46,8 +46,14 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
 
   const [currentUserIdx, setCurrentUserIdx] = useState(0);
   const [usersData, setUsersData] = useState(initialUsersData);
+  const [realIsGerant, setRealIsGerant] = useState(() => {
+    const i = findUserIndexByEmail(initialUsersData, authUser?.email);
+    return i >= 0 && initialUsersData[i].role === "gerant";
+  });
   const currentUser = usersData[currentUserIdx] || usersData[0];
-  const isGerant = currentUser.role === "gerant";
+  // Droits basés sur le compte RÉELLEMENT connecté (realIsGerant), pas sur l'utilisateur
+  // affiché. Un gérant qui « voit en tant que » un employé voit bien la vue employé.
+  const isGerant = realIsGerant && currentUser.role === "gerant";
   const employees = useMemo(() => usersData.filter(u => u.name !== "Jean Claude"), [usersData]);
 
   const [section, setSection] = useState("dashboard");
@@ -213,6 +219,8 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
         // Sinon (ex. gérant externe sans email), garde le défaut (index 0 = Jean Claude).
         const idx = findUserIndexByEmail(merged, authUser?.email);
         if (idx >= 0) setCurrentUserIdx(idx);
+        // Droits réels = rôle du compte connecté (et non l'utilisateur affiché).
+        setRealIsGerant(idx >= 0 && merged[idx].role === 'gerant');
       }
     };
     loadData();
@@ -364,6 +372,7 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
             <div style={{ fontSize: 20, fontWeight: 700, letterSpacing: -0.5 }}><span style={{ color: t.sidebarAccent }}>●</span> Kimiko</div>
             <div style={{ fontSize: 12, opacity: 0.5, marginTop: 2 }}>Street food coréenne</div>
           </div>
+          {realIsGerant && (
           <div style={{ padding: "12px 14px", borderBottom: `1px solid ${t.sidebarText}15` }}>
             <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: 1, color: t.sidebarText + "66", marginBottom: 6, fontFamily: F }}>Connecté en tant que</div>
             <select value={currentUserIdx} onChange={e => { setCurrentUserIdx(+e.target.value); setSection(usersData[+e.target.value].role === "gerant" ? "dashboard" : "tasks"); setViewDate(TODAY); setShowHistory(false); setGerantMyTasks(false); }}
@@ -371,6 +380,7 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
               {usersData.map((u, i) => <option key={i} value={i} style={{ color: "#000" }}>{u.name} ({u.role === "gerant" ? "Gérant" : "Employé"})</option>)}
             </select>
           </div>
+          )}
           <div style={{ flex: 1, padding: "16px 10px", display: "flex", flexDirection: "column", gap: 2 }}>
             {navItems.map(item => (
               <button key={item.id} onClick={() => { setSection(item.id); if (item.id === "tasks") { setShowHistory(false); setViewDate(TODAY); } }} style={{
@@ -412,7 +422,7 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
             {!isMobile && <p style={{ fontSize: 14, color: t.textMuted, margin: "4px 0 0" }}>{TODAY_LABEL} — Bon service ! 🔥 {!isGerant && <span style={{ marginLeft: 8, fontWeight: 600, color: t.primary }}>Vue employé</span>}</p>}
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
-            {isMobile && (
+            {isMobile && realIsGerant && (
               <select value={currentUserIdx} onChange={e => { setCurrentUserIdx(+e.target.value); setSection(usersData[+e.target.value].role === "gerant" ? "dashboard" : "tasks"); }} style={{ padding: "7px 10px", borderRadius: 10, border: `1.5px solid ${t.primary}40`, fontSize: 13, fontFamily: F, fontWeight: 600, background: t.surface, color: t.text, outline: "none", maxWidth: 150, minWidth: 110, boxShadow: "0 1px 4px rgba(0,0,0,0.08)", cursor: "pointer" }}>
                 {usersData.map((u, i) => <option key={i} value={i} style={{ color: "#000" }}>{u.name} {u.role === "gerant" ? "👑" : ""}</option>)}
               </select>

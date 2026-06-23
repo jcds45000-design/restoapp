@@ -35,7 +35,7 @@ export const calcHours = (shift) => {
 // ─── USERS & DATA ───
 // ═══════════════════════════════════════
 export const initialUsersData = [
-  { id: 0, name: "Jean Claude", role: "gerant", initials: "JC" },
+  { id: 0, name: "Jean Claude", role: "gerant", initials: "JC", email: "jcds45000@gmail.com" },
   // Les employés réels sont chargés depuis Supabase au démarrage
 ];
 
