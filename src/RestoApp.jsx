@@ -8,6 +8,7 @@ const StocksModule = lazy(() => import('./components/StocksModule'));
 const EquipeModule = lazy(() => import('./components/EquipeModule'));
 const PlanningModule = lazy(() => import('./components/PlanningModule'));
 const SemaineView = lazy(() => import('./components/SemaineView'));
+const TaskTemplatesModule = lazy(() => import('./components/TaskTemplatesModule'));
 
 const Loading = () => (<div style={{ padding: 40, textAlign: "center", fontSize: 14, opacity: 0.6, fontFamily: "'Noto Sans KR', sans-serif" }}>Chargement…</div>);
 import { TODAY, getMonday, WEEK_START, TODAY_LABEL, BANNER_IMAGE, fmt, fmtShort, addDays, getWeekDays, getDayName, isOverdue, calcHours, initialUsersData, initialSchedule, initialPointage, categoryList, priorityList, TASK_TEMPLATES, travailleOuverture, travailleFermeture, estPresent, initialTasks, stockCategories, initialProducts, initialSorties, stockAlerts, recentOrders, weeklyCA, themes, F, StatCard, MiniChart, Badge, StatusBadge, PriorityBadge, CategoryTag, OverdueBadge, CompletedByBadge, DateNav, TaskModal, TaskRow, ChecklistView, KanbanView, HistoryView } from './lib/foundation';
@@ -65,6 +66,8 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
   const [sorties, setSorties] = useState(initialSorties);
   const [categories, setCategories] = useState([]);
   const catNames = categories.length ? categories.map(c => c.name) : categoryList;
+  const [templates, setTemplates] = useState([]);
+  const [showTemplatesEditor, setShowTemplatesEditor] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [templateDate, setTemplateDate] = useState(TODAY);
@@ -112,7 +115,7 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
     } catch {
       historique = [];
     }
-    setTemplateAssignments(repartir({ taches: TASK_TEMPLATES, presents, historique, heures7j, seed }));
+    setTemplateAssignments(repartir({ taches: templates.length ? templates : TASK_TEMPLATES, presents, historique, heures7j, seed }));
   };
 
   const openTemplateModal = async () => {
@@ -148,6 +151,7 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
   const [fA, setFA] = useState("");
   const [fC, setFC] = useState("");
   const t = themes[themeKey];
+  const tmpl = templates.length ? templates : TASK_TEMPLATES;
   const nid = useRef(20);
 
   // ─── CHARGEMENT SUPABASE AU DÉMARRAGE ───
@@ -182,6 +186,14 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
       // Catégories de tâches
       const { data: cData } = await supabase.from('task_categories').select('*').order('sort_order');
       if (cData?.length) setCategories(cData);
+      // Tâches habituelles (catalogue) — seed initial depuis la liste codée si table vide.
+      let { data: tplData } = await supabase.from('task_templates').select('*').order('sort_order');
+      if (tplData && tplData.length === 0 && TASK_TEMPLATES.length) {
+        const seed = TASK_TEMPLATES.map((tp, i) => ({ title: tp.title, category: tp.category, priority: tp.priority, creneau: tp.creneau, sort_order: i }));
+        const { data: ins } = await supabase.from('task_templates').insert(seed).select();
+        tplData = ins || [];
+      }
+      if (tplData?.length) setTemplates(tplData);
       // Planning
       const { data: sData } = await supabase.from('schedule').select('*');
       if (sData?.length) {
@@ -252,14 +264,18 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
 
   const _pmap = { haute: 'high', moyenne: 'medium', basse: 'low' };
   const addTask = async (d) => {
+    const { addToTemplates, tmplCreneau, ...td } = d;
     const tmpId = nid.current++;
-    setTasks(p => [...p, { id: tmpId, ...d, status: "todo", completedBy: null }]);
+    setTasks(p => [...p, { id: tmpId, ...td, status: "todo", completedBy: null }]);
     setShowModal(false);
     const { data } = await supabase.from('tasks').insert({
-      title: d.title, assignee_name: d.assignee, category: d.category,
-      priority: _pmap[d.priority] || 'medium', status: 'todo', due_date: d.dueDate,
+      title: td.title, assignee_name: td.assignee, category: td.category,
+      priority: _pmap[td.priority] || 'medium', status: 'todo', due_date: td.dueDate,
     }).select().single();
     if (data) setTasks(p => p.map(tk => tk.id === tmpId ? { ...tk, id: data.id } : tk));
+    if (addToTemplates && tmplCreneau) {
+      await addTemplate({ title: td.title, category: td.category, priority: td.priority, creneau: tmplCreneau });
+    }
   };
   const toggleTask = (id) => setTasks(p => p.map(tk => {
     if (tk.id !== id) return tk;
@@ -329,6 +345,32 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
     const { error } = await supabase.from('task_categories').delete().eq('id', id);
     if (error) return { error: error.message };
     setCategories(prev => prev.filter(c => c.id !== id));
+    return { success: true };
+  };
+
+  // ─── TÂCHES HABITUELLES (catalogue, CRUD gérant) ───
+  const addTemplate = async ({ title, category, priority, creneau }) => {
+    const clean = (title || '').trim();
+    if (!clean) return { error: 'Titre vide.' };
+    if (templates.some(tp => tp.title.toLowerCase() === clean.toLowerCase() && tp.creneau === creneau)) return { error: 'Cette tâche existe déjà à ce moment.' };
+    const sort_order = templates.reduce((m, tp) => Math.max(m, tp.sort_order ?? 0), 0) + 1;
+    const { data, error } = await supabase.from('task_templates').insert({ title: clean, category, priority, creneau, sort_order }).select().single();
+    if (error) return { error: error.message };
+    setTemplates(prev => [...prev, data]);
+    return { success: true };
+  };
+  const updateTemplate = async (id, { title, category, priority, creneau }) => {
+    const clean = (title || '').trim();
+    if (!clean) return { error: 'Titre vide.' };
+    const { error } = await supabase.from('task_templates').update({ title: clean, category, priority, creneau }).eq('id', id);
+    if (error) return { error: error.message };
+    setTemplates(prev => prev.map(tp => tp.id === id ? { ...tp, title: clean, category, priority, creneau } : tp));
+    return { success: true };
+  };
+  const deleteTemplate = async (id) => {
+    const { error } = await supabase.from('task_templates').delete().eq('id', id);
+    if (error) return { error: error.message };
+    setTemplates(prev => prev.filter(tp => tp.id !== id));
     return { success: true };
   };
 
@@ -444,6 +486,7 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
                   <button onClick={() => setGerantMyTasks(true)} style={{ padding:"8px 14px", border:"none", cursor:"pointer", fontSize:13, fontWeight:600, fontFamily:F, background:gerantMyTasks ? t.primary : "transparent", color:gerantMyTasks ? "#fff" : t.textMuted, transition:"all 0.15s" }}>Mes tâches</button>
                 </div>
                 <button onClick={openTemplateModal} style={{ display:"flex", alignItems:"center", gap:8, padding:"10px 16px", borderRadius:10, border:`1.5px solid ${t.accent||'#CA8A04'}`, background:"transparent", color:t.accent||'#CA8A04', fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:F }}>📋 Template du jour</button>
+                <button onClick={() => setShowTemplatesEditor(true)} style={{ display:"flex", alignItems:"center", gap:8, padding:"10px 16px", borderRadius:10, border:`1.5px solid ${t.border}`, background:"transparent", color:t.textMuted, fontWeight:700, fontSize:13, cursor:"pointer", fontFamily:F }}>🛠️ Habituelles</button>
                 <button onClick={() => setShowModal(true)} style={{ display:"flex", alignItems:"center", gap:8, padding:"10px 20px", borderRadius:10, border:"none", background:t.primary, color:"#fff", fontWeight:600, fontSize:14, cursor:"pointer", fontFamily:F }} onMouseEnter={e => e.currentTarget.style.background = t.primaryHover} onMouseLeave={e => e.currentTarget.style.background = t.primary}>{I.plus} Nouvelle tâche</button>
               </div>}
             </div>
@@ -567,7 +610,9 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
         </div>
       )}
 
-      {showModal && <TaskModal onClose={() => setShowModal(false)} onSave={addTask} t={t} defaultDate={viewDate !== "overdue" ? viewDate : TODAY} employees={employees} categories={catNames} />}
+      {showModal && <TaskModal onClose={() => setShowModal(false)} onSave={addTask} t={t} defaultDate={viewDate !== "overdue" ? viewDate : TODAY} employees={employees} categories={catNames} templates={tmpl} />}
+
+      {showTemplatesEditor && <Suspense fallback={<Loading />}><TaskTemplatesModule t={t} F={F} templates={templates} categories={catNames} onAdd={addTemplate} onUpdate={updateTemplate} onDelete={deleteTemplate} onClose={() => setShowTemplatesEditor(false)} /></Suspense>}
 
       {/* ── MODAL TEMPLATE DU JOUR ── */}
       {showTemplateModal && (
