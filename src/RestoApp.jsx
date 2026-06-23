@@ -56,6 +56,8 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
   const [schedule, setSchedule] = useState({});
   const [products, setProducts] = useState(initialProducts);
   const [sorties, setSorties] = useState(initialSorties);
+  const [categories, setCategories] = useState([]);
+  const catNames = categories.length ? categories.map(c => c.name) : categoryList;
   const [showModal, setShowModal] = useState(false);
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [templateDate, setTemplateDate] = useState(TODAY);
@@ -170,6 +172,9 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
           seuilOrange: parseFloat(p.seuil_orange) || 0,
         })));
       }
+      // Catégories de tâches
+      const { data: cData } = await supabase.from('task_categories').select('*').order('sort_order');
+      if (cData?.length) setCategories(cData);
       // Planning
       const { data: sData } = await supabase.from('schedule').select('*');
       if (sData?.length) {
@@ -278,6 +283,40 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
     setTasks(p => p.map(tk => tk.id === editingTask.id ? { ...tk, title: etTitle, assignee: etAssignee, category: etCategory, priority: etPriority, dueDate: etDueDate } : tk));
     setEditingTask(null);
     supabase.from('tasks').update({ title: etTitle, assignee_name: etAssignee, category: etCategory, priority: _pmap[etPriority] || 'medium', due_date: etDueDate, updated_at: new Date().toISOString() }).eq('id', editingTask.id).then(() => {});
+  };
+
+  // ─── CATÉGORIES DE TÂCHES (CRUD, gérant) ───
+  const addCategory = async (name) => {
+    const clean = (name || '').trim();
+    if (!clean) return { error: 'Nom vide.' };
+    if (categories.some(c => c.name.toLowerCase() === clean.toLowerCase())) return { error: 'Cette catégorie existe déjà.' };
+    const sort_order = categories.reduce((m, c) => Math.max(m, c.sort_order ?? 0), 0) + 1;
+    const { data, error } = await supabase.from('task_categories').insert({ name: clean, sort_order }).select().single();
+    if (error) return { error: error.message };
+    setCategories(prev => [...prev, data]);
+    return { success: true };
+  };
+  const renameCategory = async (id, oldName, newName) => {
+    const clean = (newName || '').trim();
+    if (!clean) return { error: 'Nom vide.' };
+    if (oldName === 'Autre') return { error: '« Autre » ne peut pas être renommée.' };
+    if (clean === oldName) return { success: true };
+    if (categories.some(c => c.id !== id && c.name.toLowerCase() === clean.toLowerCase())) return { error: 'Ce nom est déjà pris.' };
+    const { error } = await supabase.from('task_categories').update({ name: clean }).eq('id', id);
+    if (error) return { error: error.message };
+    setCategories(prev => prev.map(c => c.id === id ? { ...c, name: clean } : c));
+    await supabase.from('tasks').update({ category: clean }).eq('category', oldName);
+    setTasks(prev => prev.map(tk => tk.category === oldName ? { ...tk, category: clean } : tk));
+    return { success: true };
+  };
+  const deleteCategory = async (id, name) => {
+    if (name === 'Autre') return { error: '« Autre » ne peut pas être supprimée.' };
+    await supabase.from('tasks').update({ category: 'Autre' }).eq('category', name);
+    setTasks(prev => prev.map(tk => tk.category === name ? { ...tk, category: 'Autre' } : tk));
+    const { error } = await supabase.from('task_categories').delete().eq('id', id);
+    if (error) return { error: error.message };
+    setCategories(prev => prev.filter(c => c.id !== id));
+    return { success: true };
   };
 
   const empBadge = isGerant ? todayTasks.filter(tk => tk.status !== "done").length + overdueTasks.length : todayTasks.filter(tk => tk.assignee === currentUser.name && tk.status !== "done").length;
@@ -397,7 +436,7 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
               <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 16, flexWrap: "wrap" }}>
                 {isGerant && <div style={{ display: "flex", background: t.surfaceAlt, borderRadius: 8, border: `1px solid ${t.border}`, overflow: "hidden" }}>{[{ key: "checklist", icon: I.list, label: "Liste" }, { key: "kanban", icon: I.kanban, label: "Kanban" }, { key: "semaine", icon: "🗓️", label: "Semaine" }].map(v => (<button key={v.key} onClick={() => setTaskView(v.key)} style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, fontFamily: F, background: taskView === v.key ? t.primary : "transparent", color: taskView === v.key ? "#fff" : t.textMuted }}>{v.icon}{v.label}</button>))}</div>}
                 {isGerant && taskView !== "semaine" && <select value={fA} onChange={e => setFA(e.target.value)} style={ss}><option value="">Tous</option>{employees.map(e => <option key={e.name}>{e.name}</option>)}</select>}
-                {taskView !== "semaine" && (<select value={fC} onChange={e => setFC(e.target.value)} style={ss}><option value="">Toutes catégories</option>{categoryList.map(c => <option key={c}>{c}</option>)}</select>)}
+                {taskView !== "semaine" && (<select value={fC} onChange={e => setFC(e.target.value)} style={ss}><option value="">Toutes catégories</option>{catNames.map(c => <option key={c}>{c}</option>)}</select>)}
               </div>
               {isGerant && taskView !== "semaine" && <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, 1fr)", gap: isMobile ? 8 : 12, marginBottom: isMobile ? 12 : 20 }}>{[{label:"À faire",val:viewTasks.filter(tk=>tk.status==="todo").length,color:t.primary},{label:"En cours",val:viewTasks.filter(tk=>tk.status==="doing").length,color:t.warning},{label:"Terminées",val:viewTasks.filter(tk=>tk.status==="done").length,color:t.success},{label:"Total",val:viewTasks.length,color:t.textMuted}].map((s,i)=>(<div key={i} style={{ background:t.surface, borderRadius:10, padding:"14px 18px", border:`1px solid ${t.border}`, display:"flex", alignItems:"center", gap:12 }}><span style={{ width:10, height:10, borderRadius:"50%", background:s.color }} /><div><div style={{ fontSize:12, color:t.textMuted }}>{s.label}</div><div style={{ fontSize:22, fontWeight:700 }}>{s.val}</div></div></div>))}</div>}
               {(isGerant && taskView === "semaine") ? <Suspense fallback={<Loading />}><SemaineView tasks={tasks} setTasks={setTasks} employees={employees} schedule={schedule} t={t} /></Suspense>
@@ -459,7 +498,7 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
 
         {/* PARAMÈTRES */}
         {effectiveSection === "settings" && isGerant && (
-          <Suspense fallback={<Loading />}><SettingsModule t={t} F={F} authUser={authUser} /></Suspense>
+          <Suspense fallback={<Loading />}><SettingsModule t={t} F={F} authUser={authUser} categories={categories} onAddCategory={addCategory} onRenameCategory={renameCategory} onDeleteCategory={deleteCategory} /></Suspense>
         )}
 
         {/* Placeholder */}
@@ -513,7 +552,7 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
         </div>
       )}
 
-      {showModal && <TaskModal onClose={() => setShowModal(false)} onSave={addTask} t={t} defaultDate={viewDate !== "overdue" ? viewDate : TODAY} employees={employees} />}
+      {showModal && <TaskModal onClose={() => setShowModal(false)} onSave={addTask} t={t} defaultDate={viewDate !== "overdue" ? viewDate : TODAY} employees={employees} categories={catNames} />}
 
       {/* ── MODAL TEMPLATE DU JOUR ── */}
       {showTemplateModal && (
@@ -623,7 +662,7 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
                 <div><label style={{ fontSize: 13, fontWeight: 600, color: t.textMuted, marginBottom: 6, display: "block", fontFamily: F }}>Date prévue</label><input type="date" value={etDueDate} onChange={e => setEtDueDate(e.target.value)} style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: `1px solid ${t.border}`, fontSize: 14, fontFamily: F, background: t.surface, color: t.text, outline: "none", cursor: "pointer" }} /></div>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                <div><label style={{ fontSize: 13, fontWeight: 600, color: t.textMuted, marginBottom: 6, display: "block", fontFamily: F }}>Catégorie</label><select value={etCategory} onChange={e => setEtCategory(e.target.value)} style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: `1px solid ${t.border}`, fontSize: 14, fontFamily: F, background: t.surface, color: t.text, outline: "none", cursor: "pointer" }}>{categoryList.map(c => <option key={c}>{c}</option>)}</select></div>
+                <div><label style={{ fontSize: 13, fontWeight: 600, color: t.textMuted, marginBottom: 6, display: "block", fontFamily: F }}>Catégorie</label><select value={etCategory} onChange={e => setEtCategory(e.target.value)} style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: `1px solid ${t.border}`, fontSize: 14, fontFamily: F, background: t.surface, color: t.text, outline: "none", cursor: "pointer" }}>{catNames.map(c => <option key={c}>{c}</option>)}</select></div>
                 <div><label style={{ fontSize: 13, fontWeight: 600, color: t.textMuted, marginBottom: 8, display: "block", fontFamily: F }}>Priorité</label><div style={{ display: "flex", gap: 6 }}>{priorityList.map(p => (<button key={p} onClick={() => setEtPriority(p)} style={{ flex: 1, padding: "8px 0", borderRadius: 8, fontSize: 12, fontWeight: 600, fontFamily: F, cursor: "pointer", textTransform: "capitalize", background: etPriority === p ? (p === "haute" ? t.danger : p === "moyenne" ? t.warning : t.success) : t.surfaceAlt, color: etPriority === p ? "#fff" : t.textMuted, border: etPriority === p ? "none" : `1px solid ${t.border}` }}>{p}</button>))}</div></div>
               </div>
             </div>

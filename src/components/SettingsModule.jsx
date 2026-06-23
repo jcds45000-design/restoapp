@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { I } from '../lib/icons';
 
-const SettingsModule = ({ t, F, authUser }) => {
+const SettingsModule = ({ t, F, authUser, categories = [], onAddCategory, onRenameCategory, onDeleteCategory }) => {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -25,6 +25,35 @@ const SettingsModule = ({ t, F, authUser }) => {
     if (error) setNpResult({ success: false, message: error.message || 'Erreur lors de la mise à jour.' });
     else { setNpResult({ success: true, message: 'Mot de passe mis à jour.' }); setNpNew(''); setNpConfirm(''); }
     setNpLoading(false);
+  };
+
+  // ─── Catégories de tâches ───
+  const [newCat, setNewCat] = useState('');
+  const [catBusy, setCatBusy] = useState(false);
+  const [catMsg, setCatMsg] = useState(null);
+  const [editCatId, setEditCatId] = useState(null);
+  const [editCatName, setEditCatName] = useState('');
+  const [delCatId, setDelCatId] = useState(null);
+  const handleAddCat = async () => {
+    setCatBusy(true); setCatMsg(null);
+    const r = await onAddCategory(newCat);
+    if (r?.error) setCatMsg({ success: false, message: r.error });
+    else { setNewCat(''); setCatMsg({ success: true, message: 'Catégorie ajoutée.' }); }
+    setCatBusy(false);
+  };
+  const handleRenameCat = async (cat) => {
+    setCatBusy(true); setCatMsg(null);
+    const r = await onRenameCategory(cat.id, cat.name, editCatName);
+    if (r?.error) setCatMsg({ success: false, message: r.error });
+    else { setEditCatId(null); setCatMsg({ success: true, message: 'Catégorie renommée, tâches mises à jour.' }); }
+    setCatBusy(false);
+  };
+  const handleDeleteCat = async (cat) => {
+    setCatBusy(true); setCatMsg(null);
+    const r = await onDeleteCategory(cat.id, cat.name);
+    if (r?.error) setCatMsg({ success: false, message: r.error });
+    else { setDelCatId(null); setCatMsg({ success: true, message: 'Catégorie supprimée, tâches déplacées dans « Autre ».' }); }
+    setCatBusy(false);
   };
 
   const createAccount = async () => {
@@ -80,6 +109,7 @@ const SettingsModule = ({ t, F, authUser }) => {
   };
 
   const inp = { width: '100%', padding: '10px 14px', borderRadius: 10, border: `1.5px solid ${t.border}`, fontSize: 14, fontFamily: F, background: t.bg, color: t.text, outline: 'none', boxSizing: 'border-box' };
+  const btnSm = { padding: '8px 12px', borderRadius: 8, border: 'none', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: F };
 
   return (
     <div style={{ maxWidth: 560 }}>
@@ -110,6 +140,52 @@ const SettingsModule = ({ t, F, authUser }) => {
           </button>
         </div>
       </div>
+      <div style={{ background: t.surface, borderRadius: 16, border: `1px solid ${t.border}`, padding: 28, marginBottom: 20 }}>
+        <h2 style={{ fontSize: 17, fontWeight: 700, margin: '0 0 6px', fontFamily: F }}>Catégories de tâches</h2>
+        <p style={{ fontSize: 14, color: t.textMuted, margin: '0 0 20px', fontFamily: F }}>Ajoute, renomme ou supprime les catégories. Supprimer une catégorie déplace ses tâches dans « Autre ».</p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {categories.map(cat => (
+            <div key={cat.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderRadius: 10, background: t.surfaceAlt, border: `1px solid ${t.border}` }}>
+              {editCatId === cat.id ? (
+                <>
+                  <input value={editCatName} onChange={e => setEditCatName(e.target.value)} autoFocus onKeyDown={e => { if (e.key === 'Enter') handleRenameCat(cat); }} style={{ ...inp, flex: 1 }} />
+                  <button onClick={() => handleRenameCat(cat)} disabled={catBusy} style={{ ...btnSm, background: t.primary, color: '#fff' }}>OK</button>
+                  <button onClick={() => setEditCatId(null)} style={{ ...btnSm, background: t.surface, color: t.textMuted, border: `1px solid ${t.border}` }}>Annuler</button>
+                </>
+              ) : delCatId === cat.id ? (
+                <>
+                  <span style={{ flex: 1, fontSize: 13, color: t.text, fontFamily: F }}>Supprimer « {cat.name} » ? Ses tâches passent dans « Autre ».</span>
+                  <button onClick={() => handleDeleteCat(cat)} disabled={catBusy} style={{ ...btnSm, background: t.danger, color: '#fff' }}>Confirmer</button>
+                  <button onClick={() => setDelCatId(null)} style={{ ...btnSm, background: t.surface, color: t.textMuted, border: `1px solid ${t.border}` }}>Annuler</button>
+                </>
+              ) : (
+                <>
+                  <span style={{ flex: 1, fontSize: 14, fontWeight: 600, color: t.text, fontFamily: F }}>{cat.name}</span>
+                  {cat.name === 'Autre' ? (
+                    <span style={{ fontSize: 12, color: t.textMuted, fontFamily: F }}>protégée</span>
+                  ) : (
+                    <>
+                      <button onClick={() => { setEditCatId(cat.id); setEditCatName(cat.name); setCatMsg(null); }} style={{ ...btnSm, background: t.surface, color: t.text, border: `1px solid ${t.border}` }}>Renommer</button>
+                      <button onClick={() => { setDelCatId(cat.id); setCatMsg(null); }} style={{ ...btnSm, background: t.danger + '0F', color: t.danger, border: `1px solid ${t.danger}30` }}>Supprimer</button>
+                    </>
+                  )}
+                </>
+              )}
+            </div>
+          ))}
+          {categories.length === 0 && <p style={{ fontSize: 13, color: t.textMuted, fontFamily: F, margin: 0 }}>Aucune catégorie chargée (applique d'abord le SQL de création de la table dans Supabase).</p>}
+        </div>
+        <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+          <input value={newCat} onChange={e => setNewCat(e.target.value)} placeholder="Nouvelle catégorie (ex : Livraison)" onKeyDown={e => { if (e.key === 'Enter') handleAddCat(); }} style={{ ...inp, flex: 1 }} />
+          <button onClick={handleAddCat} disabled={catBusy || !newCat.trim()} style={{ ...btnSm, padding: '10px 16px', background: (catBusy || !newCat.trim()) ? t.border : t.primary, color: (catBusy || !newCat.trim()) ? t.textMuted : '#fff' }}>Ajouter</button>
+        </div>
+        {catMsg && (
+          <div style={{ marginTop: 12, padding: '10px 14px', borderRadius: 8, fontSize: 13, fontWeight: 500, fontFamily: F, background: catMsg.success ? t.success + '12' : t.danger + '12', color: catMsg.success ? t.success : t.danger, border: `1px solid ${(catMsg.success ? t.success : t.danger)}22` }}>
+            {catMsg.success ? '✓ ' : '✗ '}{catMsg.message}
+          </div>
+        )}
+      </div>
+
       <div style={{ background: t.surface, borderRadius: 16, border: `1px solid ${t.border}`, padding: 28, marginBottom: 20 }}>
         <h2 style={{ fontSize: 17, fontWeight: 700, margin: '0 0 6px', fontFamily: F }}>Gestion des comptes</h2>
         <p style={{ fontSize: 14, color: t.textMuted, margin: '0 0 24px', fontFamily: F }}>Créer un compte pour un nouvel employé ou gérant.</p>
