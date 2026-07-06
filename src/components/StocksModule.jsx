@@ -51,10 +51,11 @@ const StocksModule = ({ t, products, setProducts, sorties, setSorties, suppliers
   const addProduct = async () => {
     if (!npName.trim() || !npQty) return;
     const tmpId = pidRef.current++;
-    const np = { id: tmpId, name: npName, category: npCat, qty: parseFloat(npQty), unit: npUnit, seuil: parseFloat(npSeuil) || null, seuilOrange: parseFloat(npSeuil) * 2 || null };
+    const np = { id: tmpId, name: npName, category: npCat, qty: parseFloat(npQty), unit: npUnit, seuil: npSeuil !== "" ? parseFloat(npSeuil) : null, seuilOrange: npSeuil !== "" ? parseFloat(npSeuil) * 2 : null };
     setProducts(prev => [...prev, np]);
     setNpName(""); setNpQty(""); setNpSeuil(""); setShowAddProduct(false);
-    const { data } = await supabase.from('products').insert({ name: np.name, category: np.category, unit: np.unit, qty: np.qty, seuil: np.seuil, seuil_orange: np.seuilOrange, stock_current: np.qty, stock_min: np.seuil }).select().single();
+    const { data, error } = await supabase.from('products').insert({ name: np.name, category: np.category, unit: np.unit, qty: np.qty, seuil: np.seuil, seuil_orange: np.seuilOrange, stock_current: np.qty, stock_min: np.seuil }).select().single();
+    if (error) { alert('Erreur à la création du produit : ' + error.message); setProducts(prev => prev.filter(p => p.id !== tmpId)); return; }
     if (data) setProducts(prev => prev.map(p => p.id === tmpId ? { ...p, _uuid: data.id } : p));
   };
 
@@ -85,8 +86,9 @@ const StocksModule = ({ t, products, setProducts, sorties, setSorties, suppliers
     const { error } = await supabase.from('stock_movements')
       .update({ status: 'validated', qty_before: prod.qty, qty_after: newQty }).eq('id', sid);
     if (error) { alert('Erreur : ' + error.message); return; }
-    await supabase.from('products').update({ qty: newQty, stock_current: newQty }).eq('id', prod._uuid);
+    const { error: e2 } = await supabase.from('products').update({ qty: newQty, stock_current: newQty }).eq('id', prod._uuid);
     setSorties(prev => prev.map(s => s.id === sid ? { ...s, status: 'validated' } : s));
+    if (e2) { alert('Sortie validée mais stock non décrémenté : ' + e2.message); return; }
     setProducts(prev => prev.map(p => p._uuid === prod._uuid ? { ...p, qty: newQty } : p));
   };
 
@@ -267,9 +269,10 @@ const StocksModule = ({ t, products, setProducts, sorties, setSorties, suppliers
               })}
             </div>
           ))}
-          <button onClick={() => {
-            navigator.clipboard.writeText(formatShoppingListText(shoppingGroups));
-            alert('Liste copiée, prête à coller dans WhatsApp/SMS.');
+          <button onClick={async () => {
+            const txt = formatShoppingListText(shoppingGroups);
+            try { await navigator.clipboard.writeText(txt); alert('Liste copiée, prête à coller dans WhatsApp/SMS.'); }
+            catch { window.prompt('Copie impossible ici, sélectionne et copie :', txt); }
           }} style={{ width: "100%", marginTop: 12, padding: "12px 0", borderRadius: 10, border: "none", background: t.primary, color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: F }}>📤 Partager la liste (texte)</button>
         </>
       )}
@@ -312,7 +315,7 @@ const StocksModule = ({ t, products, setProducts, sorties, setSorties, suppliers
                 <option value="">Toutes catégories</option>
                 {stockCategories.map(c => <option key={c}>{c}</option>)}
               </select>
-              {sansSeuil.length > 0 && (
+              {(sansSeuilOnly || sansSeuil.length > 0) && (
                 <button
                   onClick={() => setSansSeuilOnly(v => !v)}
                   style={{ padding: "8px 12px", borderRadius: 8, border: `1px solid ${t.border}`, fontSize: 13, fontWeight: 600, fontFamily: F, cursor: "pointer", background: sansSeuilOnly ? t.primary : t.surface, color: sansSeuilOnly ? "#fff" : t.text }}>
@@ -376,7 +379,7 @@ const StocksModule = ({ t, products, setProducts, sorties, setSorties, suppliers
                 <label style={{ fontSize: 12, fontWeight: 600, color: t.textMuted, marginBottom: 6, display: "block", fontFamily: F }}>Produit</label>
                 <select value={spProduct} onChange={e => setSpProduct(e.target.value)} style={{ ...sel, width: "100%" }}>
                   <option value="">Choisir un produit…</option>
-                  {products.map(p => <option key={p.id} value={p._uuid}>{p.name} ({p.qty} {p.unit})</option>)}
+                  {products.filter(p => p._uuid).map(p => <option key={p.id} value={p._uuid}>{p.name} ({p.qty} {p.unit})</option>)}
                 </select>
               </div>
               <div><label style={{ fontSize: 12, fontWeight: 600, color: t.textMuted, marginBottom: 6, display: "block", fontFamily: F }}>Quantité prélevée</label><input value={spQty} onChange={e => setSpQty(e.target.value)} type="number" step="0.1" placeholder="0" style={{ ...sel, width: "100%" }} /></div>
