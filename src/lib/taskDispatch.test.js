@@ -83,6 +83,21 @@ describe("decalerJours", () => {
   });
 });
 
+import { titresHorsCatalogue } from "./taskDispatch.js";
+
+describe('titresHorsCatalogue', () => {
+  it('retourne les titres de la semaine absents du catalogue, dédoublonnés', () => {
+    const tasks = [
+      { title: 'Libre A', dueDate: '2026-07-06' },
+      { title: 'Libre A', dueDate: '2026-07-07' },
+      { title: 'Au catalogue', dueDate: '2026-07-06' },
+      { title: 'Libre B', dueDate: '2026-07-20' }, // hors semaine
+    ];
+    const jours = ['2026-07-06', '2026-07-07', '2026-07-08', '2026-07-09', '2026-07-10', '2026-07-11'];
+    expect(titresHorsCatalogue(tasks, jours, ['Au catalogue'])).toEqual(['Libre A']);
+  });
+});
+
 describe("pivotSemaine", () => {
   it("range les tâches par titre puis par date, ignore les dates hors semaine", () => {
     const taches = [

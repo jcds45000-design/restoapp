@@ -105,6 +105,14 @@ export function decalerJours(dateStr, n) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+// Titres des tâches de la semaine absents du catalogue (tâches « libres »),
+// pour que la vue Semaine puisse quand même les afficher.
+export function titresHorsCatalogue(tasks, jours, titresCatalogue) {
+  const set = new Set(titresCatalogue);
+  const joursSet = new Set(jours);
+  return [...new Set(tasks.filter(tk => joursSet.has(tk.dueDate) && !set.has(tk.title)).map(tk => tk.title))];
+}
+
 // Pivote une liste de tâches (forme app) en grille[titre][date] = { id, assignee },
 // en ne gardant que les tâches dont dueDate est dans `dates`.
 export function pivotSemaine(taches, dates) {

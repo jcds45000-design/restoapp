@@ -1,10 +1,10 @@
 import { useState, useRef, useMemo, useEffect, Fragment } from 'react';
 import { supabase } from '../lib/supabase';
-import { repartir, CORVEES, pivotSemaine, decalerJours } from '../lib/taskDispatch';
+import { repartir, CORVEES, pivotSemaine, decalerJours, titresHorsCatalogue } from '../lib/taskDispatch';
 import { I } from '../lib/icons';
-import { TODAY, getMonday, WEEK_START, TODAY_LABEL, BANNER_IMAGE, fmt, fmtShort, addDays, getWeekDays, getDayName, isOverdue, calcHours, initialUsersData, initialSchedule, initialPointage, categoryList, priorityList, TASK_TEMPLATES, travailleOuverture, travailleFermeture, estPresent, initialTasks, stockCategories, initialProducts, initialSorties, stockAlerts, recentOrders, weeklyCA, themes, F, StatCard, MiniChart, Badge, StatusBadge, PriorityBadge, CategoryTag, OverdueBadge, CompletedByBadge, DateNav, TaskModal, TaskRow, ChecklistView, KanbanView, HistoryView } from '../lib/foundation';
+import { TODAY, getMonday, WEEK_START, TODAY_LABEL, BANNER_IMAGE, fmt, fmtShort, addDays, getWeekDays, getDayName, isOverdue, calcHours, initialUsersData, initialSchedule, initialPointage, categoryList, priorityList, travailleOuverture, travailleFermeture, estPresent, initialTasks, stockCategories, initialProducts, initialSorties, stockAlerts, recentOrders, weeklyCA, themes, F, StatCard, MiniChart, Badge, StatusBadge, PriorityBadge, CategoryTag, OverdueBadge, CompletedByBadge, DateNav, TaskModal, TaskRow, ChecklistView, KanbanView, HistoryView } from '../lib/foundation';
 
-const SemaineView = ({ tasks, setTasks, employees, schedule, t }) => {
+const SemaineView = ({ tasks, setTasks, employees, schedule, t, templates }) => {
   const [weekStart, setWeekStart] = useState(WEEK_START); // lundi de la semaine affichée
   const [editCell, setEditCell] = useState(null); // { title, date }
   const [busy, setBusy] = useState(false);
@@ -32,7 +32,7 @@ const SemaineView = ({ tasks, setTasks, employees, schedule, t }) => {
     .map(u => u.name);
 
   const assignerCellule = async (titre, date, nom) => {
-    const tmpl = TASK_TEMPLATES.find(x => x.title === titre);
+    const tmpl = templates.find(x => x.title === titre);
     const c = grille[titre] && grille[titre][date];
     setEditCell(null);
     if (c && c.id) {
@@ -114,7 +114,7 @@ const SemaineView = ({ tasks, setTasks, employees, schedule, t }) => {
         ...(hist || []).map(r => ({ assignee: r.assignee_name, title: r.title, due_date: r.due_date })),
         ...nouvelles.filter(n => n.due_date >= addDays(date, -7) && n.due_date < date).map(n => ({ assignee: n.assignee_name, title: n.title, due_date: n.due_date })),
       ];
-      const affectations = repartir({ taches: TASK_TEMPLATES, presents, historique, heures7j, seed: 1 });
+      const affectations = repartir({ taches: templates, presents, historique, heures7j, seed: 1 });
       affectations.forEach(a => {
         if (!a.assignee) return;
         nouvelles.push({ title: a.title, assignee_name: a.assignee, category: a.category, priority: PRIO_TO_DB[a.priority] || 'medium', status: 'todo', due_date: date, completed_by_name: null });
@@ -129,6 +129,38 @@ const SemaineView = ({ tasks, setTasks, employees, schedule, t }) => {
   };
 
   const cell = { padding: "6px 8px", borderBottom: `1px solid ${t.border}`, borderRight: `1px solid ${t.border}`, fontSize: 12, fontFamily: F, textAlign: "center", minWidth: 78 };
+
+  const renderLigne = (titre, corvee) => (
+    <tr key={titre}>
+      <td style={{ ...cell, textAlign: "left", fontWeight: 500 }}>{corvee && <span style={{ color: t.warning || '#F97316', marginRight: 4 }}>●</span>}{titre}{jours.some(d => grille[titre] && grille[titre][d]) && <button onClick={() => retirerSemaine(titre)} title="Retirer cette tâche toute la semaine" style={{ marginLeft: 6, border: "none", background: "transparent", color: t.textMuted, cursor: "pointer", fontSize: 12 }}>✕</button>}</td>
+      {jours.map(d => {
+        const c = grille[titre] && grille[titre][d];
+        const enEdition = editCell && editCell.title === titre && editCell.date === d;
+        if (enEdition) {
+          const presents = presentsJour(d);
+          const noms = [...presents, ...employees.map(e => e.name).filter(n => !presents.includes(n))];
+          return (
+            <td key={d} style={cell}>
+              <select autoFocus value={c ? c.assignee : ''} onChange={e => assignerCellule(titre, d, e.target.value)} onBlur={() => setEditCell(null)} style={{ width: "100%", fontSize: 12, fontFamily: F, padding: 2 }}>
+                <option value="">— personne —</option>
+                {noms.map(n => <option key={n} value={n}>{n}</option>)}
+              </select>
+            </td>
+          );
+        }
+        return (
+          <td key={d} onClick={() => setEditCell({ title: titre, date: d })} style={{ ...cell, cursor: "pointer", background: c && corvee ? '#F9731612' : 'transparent', color: c ? t.text : t.textMuted }}>
+            {c ? (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                {c.assignee}
+                <button onClick={(e) => { e.stopPropagation(); retirerJour(titre, d); }} title="Retirer pour ce jour" style={{ border: "none", background: "transparent", color: t.textMuted, cursor: "pointer", fontSize: 11, padding: 0, lineHeight: 1 }}>✕</button>
+              </span>
+            ) : '—'}
+          </td>
+        );
+      })}
+    </tr>
+  );
 
   return (
     <div>
@@ -155,42 +187,19 @@ const SemaineView = ({ tasks, setTasks, employees, schedule, t }) => {
             {groupes.map(g => (
               <Fragment key={g.cle}>
                 <tr><td colSpan={7} style={{ padding: "8px 10px", fontWeight: 700, fontSize: 12, fontFamily: F, background: t.surfaceAlt, color: t.primary }}>{g.titre}</td></tr>
-                {TASK_TEMPLATES.filter(tk => tk.creneau === g.cle).map(tk => {
-                  const corvee = CORVEES.has(tk.title);
-                  return (
-                    <tr key={tk.title}>
-                      <td style={{ ...cell, textAlign: "left", fontWeight: 500 }}>{corvee && <span style={{ color: t.warning || '#F97316', marginRight: 4 }}>●</span>}{tk.title}{jours.some(d => grille[tk.title] && grille[tk.title][d]) && <button onClick={() => retirerSemaine(tk.title)} title="Retirer cette tâche toute la semaine" style={{ marginLeft: 6, border: "none", background: "transparent", color: t.textMuted, cursor: "pointer", fontSize: 12 }}>✕</button>}</td>
-                      {jours.map(d => {
-                        const c = grille[tk.title] && grille[tk.title][d];
-                        const enEdition = editCell && editCell.title === tk.title && editCell.date === d;
-                        if (enEdition) {
-                          const presents = presentsJour(d);
-                          const noms = [...presents, ...employees.map(e => e.name).filter(n => !presents.includes(n))];
-                          return (
-                            <td key={d} style={cell}>
-                              <select autoFocus value={c ? c.assignee : ''} onChange={e => assignerCellule(tk.title, d, e.target.value)} onBlur={() => setEditCell(null)} style={{ width: "100%", fontSize: 12, fontFamily: F, padding: 2 }}>
-                                <option value="">— personne —</option>
-                                {noms.map(n => <option key={n} value={n}>{n}</option>)}
-                              </select>
-                            </td>
-                          );
-                        }
-                        return (
-                          <td key={d} onClick={() => setEditCell({ title: tk.title, date: d })} style={{ ...cell, cursor: "pointer", background: c && corvee ? '#F9731612' : 'transparent', color: c ? t.text : t.textMuted }}>
-                            {c ? (
-                              <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                                {c.assignee}
-                                <button onClick={(e) => { e.stopPropagation(); retirerJour(tk.title, d); }} title="Retirer pour ce jour" style={{ border: "none", background: "transparent", color: t.textMuted, cursor: "pointer", fontSize: 11, padding: 0, lineHeight: 1 }}>✕</button>
-                              </span>
-                            ) : '—'}
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  );
-                })}
+                {templates.filter(tk => tk.creneau === g.cle).map(tk => renderLigne(tk.title, CORVEES.has(tk.title)))}
               </Fragment>
             ))}
+            {(() => {
+              const horscat = titresHorsCatalogue(tasks, jours, templates.map(x => x.title));
+              if (!horscat.length) return null;
+              return (
+                <Fragment key="hors-catalogue">
+                  <tr><td colSpan={7} style={{ padding: "8px 10px", fontWeight: 700, fontSize: 12, fontFamily: F, background: t.surfaceAlt, color: t.primary }}>Hors catalogue</td></tr>
+                  {horscat.map(titre => renderLigne(titre, false))}
+                </Fragment>
+              );
+            })()}
           </tbody>
         </table>
       </div>
