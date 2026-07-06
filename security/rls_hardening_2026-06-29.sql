@@ -63,7 +63,11 @@ $$;
 revoke all on function private.jwt_email() from public;
 revoke all on function private.is_gerant() from public;
 revoke all on function private.my_name() from public;
-grant execute on function private.is_gerant(), private.my_name() to authenticated;
+-- IMPORTANT : jwt_email() est appelée DIRECTEMENT dans la politique employees_read
+-- (section 5). Le rôle authenticated DOIT pouvoir l'exécuter, sinon la lecture des
+-- employés échoue en « permission denied » et l'écran Équipe affiche 0 employé.
+-- (Oubli du script d'origine, diagnostiqué et corrigé le 05/07/2026.)
+grant execute on function private.jwt_email(), private.is_gerant(), private.my_name() to authenticated;
 
 -- ─── 4. Purge des politiques existantes sur les 6 tables (repart propre) ─────
 do $$
@@ -134,6 +138,36 @@ create policy task_templates_read on public.task_templates
 create policy task_templates_write on public.task_templates
   for all to authenticated
   using ( private.is_gerant() ) with check ( private.is_gerant() );
+
+-- ─── 8bis. orders / stock_movements / menu_items : fermeture de l'anonyme ────
+--     Oubliées lors du durcissement d'origine : restées en using(true) = ouvertes
+--     à TOUS, y compris les non-connectés (dont le CA via orders). Ajout du
+--     05/07/2026 : lecture/écriture réservées aux utilisateurs connectés. L'appli
+--     restoapp étant entièrement derrière login, ce resserrement ne casse rien.
+--     (n8n lit via service_role, qui contourne la RLS : non impacté.)
+do $$
+declare r record;
+begin
+  for r in
+    select policyname, tablename from pg_policies
+    where schemaname = 'public'
+      and tablename in ('orders','stock_movements','menu_items')
+  loop
+    execute format('drop policy if exists %I on public.%I', r.policyname, r.tablename);
+  end loop;
+end $$;
+
+alter table public.orders enable row level security;
+create policy orders_rw on public.orders
+  for all to authenticated using ( true ) with check ( true );
+
+alter table public.stock_movements enable row level security;
+create policy stock_movements_rw on public.stock_movements
+  for all to authenticated using ( true ) with check ( true );
+
+alter table public.menu_items enable row level security;
+create policy menu_items_rw on public.menu_items
+  for all to authenticated using ( true ) with check ( true );
 
 -- ─── 9. Vérif rapide (optionnel) : doit lister RLS active + les politiques ───
 -- select tablename, rowsecurity from pg_tables where schemaname='public'

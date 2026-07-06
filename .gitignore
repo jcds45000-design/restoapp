@@ -5,3 +5,13 @@ dist
 .env
 .env.local
 .env.production
+
+# Scripts de test/vérification locaux : contiennent des identifiants en clair.
+# NE JAMAIS committer (le dépôt est public). À migrer vers des variables d'env.
+pw_*.cjs
+verif_*.mjs
+extract*.mjs
+cleanup_taches.mjs
+
+# Sessions de brainstorming visuel (maquettes locales)
+.superpowers/
