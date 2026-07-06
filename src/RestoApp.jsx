@@ -64,6 +64,8 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
   const [schedule, setSchedule] = useState({});
   const [products, setProducts] = useState(initialProducts);
   const [sorties, setSorties] = useState(initialSorties);
+  const [suppliers, setSuppliers] = useState([]);
+  const [productSuppliers, setProductSuppliers] = useState([]);
   const [categories, setCategories] = useState([]);
   const catNames = categories.length ? categories.map(c => c.name) : categoryList;
   const [templates, setTemplates] = useState([]);
@@ -172,15 +174,32 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
           completedBy: t.completed_by_name || null,
         })));
       }
-      // Produits
+      // Produits (seuil null = « à définir », ne pas le convertir en 0)
       const { data: pData } = await supabase.from('products').select('*').order('name');
       if (pData?.length) {
         setProducts(pData.map((p, i) => ({
           id: i + 1, _uuid: p.id,
           name: p.name, category: p.category, unit: p.unit,
           qty: parseFloat(p.qty) || 0,
-          seuil: parseFloat(p.seuil) || 0,
-          seuilOrange: parseFloat(p.seuil_orange) || 0,
+          seuil: p.seuil == null ? null : parseFloat(p.seuil),
+          seuilOrange: p.seuil_orange == null ? null : parseFloat(p.seuil_orange),
+          priceUnit: p.price_unit == null ? null : parseFloat(p.price_unit),
+        })));
+      }
+      // Fournisseurs + liaisons produit-fournisseur
+      const { data: supData } = await supabase.from('suppliers').select('*').order('name');
+      if (supData) setSuppliers(supData);
+      const { data: psData } = await supabase.from('product_suppliers').select('*');
+      if (psData) setProductSuppliers(psData);
+      // Sorties (persistées dans stock_movements, type 'out')
+      const { data: mvData } = await supabase.from('stock_movements')
+        .select('*').eq('type', 'out').order('created_at');
+      if (mvData?.length) {
+        setSorties(mvData.map(m => ({
+          id: m.id, productUuid: m.product_id, qty: Math.abs(parseFloat(m.quantity) || 0),
+          empName: m.employee_name || '', date: (m.created_at || '').slice(0, 10),
+          time: (m.created_at || '').slice(11, 16).replace(':', 'h'),
+          status: m.status || 'validated', note: m.reason || '',
         })));
       }
       // Catégories de tâches
@@ -551,7 +570,10 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
 
         {/* STOCKS */}
         {effectiveSection === "stocks" && (
-          <Suspense fallback={<Loading />}><StocksModule t={t} products={products} setProducts={setProducts} sorties={sorties} setSorties={setSorties} isGerant={isGerant} currentUserName={currentUser.name} /></Suspense>
+          <Suspense fallback={<Loading />}><StocksModule t={t} products={products} setProducts={setProducts}
+  sorties={sorties} setSorties={setSorties} suppliers={suppliers} setSuppliers={setSuppliers}
+  productSuppliers={productSuppliers} setProductSuppliers={setProductSuppliers}
+  isGerant={isGerant} currentUserName={currentUser.name} /></Suspense>
         )}
 
         {/* PARAMÈTRES */}
