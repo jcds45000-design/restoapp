@@ -198,7 +198,9 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
         setSorties(mvData.map(m => ({
           id: m.id, productUuid: m.product_id, qty: Math.abs(parseFloat(m.quantity) || 0),
           empName: m.employee_name || '', date: (m.created_at || '').slice(0, 10),
-          time: (m.created_at || '').slice(11, 16).replace(':', 'h'),
+          time: m.created_at
+            ? new Date(m.created_at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' }).replace(':', 'h')
+            : '',
           status: m.status || 'validated', note: m.reason || '',
         })));
       }
