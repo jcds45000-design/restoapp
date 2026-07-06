@@ -22,6 +22,7 @@ const FournisseursModal = ({ t, suppliers, setSuppliers, productSuppliers, onClo
   const addSupplier = async () => {
     const name = newName.trim();
     if (!name) return;
+    if (suppliers.some(x => x.name.trim().toLowerCase() === name.toLowerCase())) { alert('Un fournisseur avec ce nom existe déjà.'); return; }
     const { data, error } = await supabase.from('suppliers').insert({ name }).select().single();
     if (error) { alert('Erreur : ' + error.message); return; }
     setSuppliers(prev => [...prev, data]);
@@ -47,6 +48,11 @@ const FournisseursModal = ({ t, suppliers, setSuppliers, productSuppliers, onClo
 
   // Supprimer ou désactiver (si des produits sont liés)
   const removeSupplier = async (s) => {
+    const primaryCount = productSuppliers.filter(l => l.supplier_id === s.id && l.is_primary).length;
+    if (primaryCount > 0) {
+      const ok = window.confirm(`Ce fournisseur est principal pour ${primaryCount} produit(s) : ils passeront en « Sans fournisseur » dans la liste de courses. Continuer ?`);
+      if (!ok) return;
+    }
     const linked = productSuppliers.some(l => l.supplier_id === s.id);
     if (linked) {
       const { error } = await supabase.from('suppliers').update({ active: false }).eq('id', s.id);

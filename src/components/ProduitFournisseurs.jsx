@@ -38,7 +38,7 @@ const ProduitFournisseurs = ({ t, product, suppliers, productSuppliers, setProdu
       if (e1) { alert('Erreur : ' + e1.message); return; }
     }
     const { error } = await supabase.from('product_suppliers').update({ is_primary: true }).eq('id', link.id);
-    if (error) { alert('Erreur : ' + error.message); return; }
+    if (error) { alert('Erreur : ' + error.message + '\nRéouvre le produit et re-sélectionne le fournisseur principal.'); return; }
     setProductSuppliers(prev => prev.map(l =>
       l.product_id !== product._uuid ? l : { ...l, is_primary: l.id === link.id }
     ));
@@ -46,7 +46,7 @@ const ProduitFournisseurs = ({ t, product, suppliers, productSuppliers, setProdu
 
   // Mettre à jour le prix HT au blur
   const updatePrice = async (link, rawValue) => {
-    const parsed = rawValue === '' ? null : parseFloat(rawValue);
+    const parsed = rawValue === '' ? null : parseFloat(String(rawValue).replace(',', '.'));
     if (parsed !== null && isNaN(parsed)) return;
     const { error } = await supabase.from('product_suppliers').update({ price_ht: parsed }).eq('id', link.id);
     if (error) { alert('Erreur : ' + error.message); return; }
@@ -63,7 +63,7 @@ const ProduitFournisseurs = ({ t, product, suppliers, productSuppliers, setProdu
   // Ajouter un fournisseur à ce produit
   const addLink = async () => {
     if (!addSupplierId) return;
-    const price = addPrice === '' ? null : parseFloat(addPrice);
+    const price = addPrice === '' ? null : parseFloat(String(addPrice).replace(',', '.'));
     if (price !== null && isNaN(price)) return;
     const hasPrimary = productSuppliers.some(l => l.product_id === product._uuid && l.is_primary);
     const { data, error } = await supabase
