@@ -5,9 +5,9 @@ import { TODAY, fmt, Badge, stockCategories, F } from '../lib/foundation';
 import { getUrgency, computeShoppingList, formatShoppingListText, supplierLinksOf } from '../lib/stock';
 import InventaireMode from './InventaireMode';
 import FournisseursModal from './FournisseursModal';
+import ProduitFournisseurs from './ProduitFournisseurs';
 
 // Coordinateur principal du module stock : inventaire, sorties, liste de courses.
-// eslint-disable-next-line no-unused-vars -- setProductSuppliers sera utilisé en Tâche 6 (FournisseursModal)
 const StocksModule = ({ t, products, setProducts, sorties, setSorties, suppliers, setSuppliers, productSuppliers, setProductSuppliers, isGerant, currentUserName }) => {
   const [stockView, setStockView] = useState("inventory"); // inventory | sorties | shopping
   const [filterCat, setFilterCat] = useState("");
@@ -129,8 +129,13 @@ const StocksModule = ({ t, products, setProducts, sorties, setSorties, suppliers
     setEditingProduct(null);
   };
 
-  const deleteProduct = () => {
+  const deleteProduct = async () => {
     if (!editingProduct) return;
+    if (editingProduct._uuid) {
+      const { error } = await supabase.from('products').delete().eq('id', editingProduct._uuid);
+      if (error) { alert('Erreur : ' + error.message); return; }
+    }
+    setProductSuppliers(prev => prev.filter(l => l.product_id !== editingProduct._uuid));
     setProducts(prev => prev.filter(p => p.id !== editingProduct.id));
     setEditingProduct(null);
   };
@@ -413,6 +418,8 @@ const StocksModule = ({ t, products, setProducts, sorties, setSorties, suppliers
                 <div><label style={{ fontSize: 12, fontWeight: 600, color: t.textMuted, marginBottom: 6, display: "block", fontFamily: F }}>Seuil de vigilance (orange)</label><input value={epSeuilOrange} onChange={e => setEpSeuilOrange(e.target.value)} type="number" step="0.1" style={{ ...sel, width: "100%" }} /></div>
               </div>
               <div style={{ background: t.surfaceAlt, borderRadius: 10, padding: "10px 14px", fontSize: 13, color: t.textMuted }}>Quantité actuelle : <span style={{ fontWeight: 700, color: t.text }}>{editingProduct.qty} {editingProduct.unit}</span> — modifiable directement dans l'inventaire.</div>
+              <ProduitFournisseurs t={t} product={editingProduct} suppliers={suppliers}
+                productSuppliers={productSuppliers} setProductSuppliers={setProductSuppliers} />
             </div>
             <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
               {!confirmDelete ? (
