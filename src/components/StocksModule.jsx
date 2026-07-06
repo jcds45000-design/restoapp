@@ -1,19 +1,26 @@
-import { useState, useRef, useMemo, useEffect, Fragment } from 'react';
+import { useState, useRef } from 'react';
 import { supabase } from '../lib/supabase';
-import { repartir, CORVEES, pivotSemaine, decalerJours } from '../lib/taskDispatch';
 import { I } from '../lib/icons';
-import { TODAY, getMonday, WEEK_START, TODAY_LABEL, BANNER_IMAGE, fmt, fmtShort, addDays, getWeekDays, getDayName, isOverdue, calcHours, initialUsersData, initialSchedule, initialPointage, categoryList, priorityList, TASK_TEMPLATES, travailleOuverture, travailleFermeture, estPresent, initialTasks, stockCategories, initialProducts, initialSorties, stockAlerts, recentOrders, weeklyCA, themes, F, StatCard, MiniChart, Badge, StatusBadge, PriorityBadge, CategoryTag, OverdueBadge, CompletedByBadge, DateNav, TaskModal, TaskRow, ChecklistView, KanbanView, HistoryView } from '../lib/foundation';
+import { TODAY, fmt, Badge, stockCategories, F } from '../lib/foundation';
+import { getUrgency, computeShoppingList, formatShoppingListText, supplierLinksOf } from '../lib/stock';
+import InventaireMode from './InventaireMode';
+import FournisseursModal from './FournisseursModal';
 
-const StocksModule = ({ t, products, setProducts, sorties, setSorties, isGerant, currentUserName }) => {
+// Coordinateur principal du module stock : inventaire, sorties, liste de courses.
+// eslint-disable-next-line no-unused-vars -- setProductSuppliers sera utilisé en Tâche 6 (FournisseursModal)
+const StocksModule = ({ t, products, setProducts, sorties, setSorties, suppliers, setSuppliers, productSuppliers, setProductSuppliers, isGerant, currentUserName }) => {
   const [stockView, setStockView] = useState("inventory"); // inventory | sorties | shopping
   const [filterCat, setFilterCat] = useState("");
+  const [sansSeuilOnly, setSansSeuilOnly] = useState(false);
   const [showAddProduct, setShowAddProduct] = useState(false);
   const [showSortieModal, setShowSortieModal] = useState(false);
+  const [showInventaire, setShowInventaire] = useState(false);
+  const [showFournisseurs, setShowFournisseurs] = useState(false);
   const [editProduct, setEditProduct] = useState(null); // product id for inline qty edit
   const [editQty, setEditQty] = useState("");
   const [editingProduct, setEditingProduct] = useState(null); // full product object for edit modal
 
-  // Edit product form state
+  // Formulaire édition produit
   const [epName, setEpName] = useState("");
   const [epCat, setEpCat] = useState("");
   const [epUnit, setEpUnit] = useState("");
@@ -21,61 +28,73 @@ const StocksModule = ({ t, products, setProducts, sorties, setSorties, isGerant,
   const [epSeuilOrange, setEpSeuilOrange] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  // New product form state
+  // Formulaire ajout produit
   const [npName, setNpName] = useState("");
   const [npCat, setNpCat] = useState(stockCategories[0]);
   const [npQty, setNpQty] = useState("");
   const [npUnit, setNpUnit] = useState("kg");
   const [npSeuil, setNpSeuil] = useState("");
 
-  // Sortie form state
+  // Formulaire déclaration sortie
   const [spProduct, setSpProduct] = useState("");
   const [spQty, setSpQty] = useState("");
   const [spNote, setSpNote] = useState("");
 
   const pidRef = useRef(100);
-  const sidRef = useRef(100);
 
-  const getUrgency = (p) => {
-    if (p.qty <= p.seuil) return "high";
-    if (p.qty <= p.seuilOrange) return "medium";
-    return "ok";
-  };
-
+  // Listes dérivées
   const pendingSorties = sorties.filter(s => s.status === "pending");
-  const alertProducts = products.filter(p => p.qty <= p.seuil);
-  const shoppingList = alertProducts.map(p => ({ ...p, toOrder: Math.ceil((p.seuilOrange - p.qty) * 1.2) }));
+  const alertProducts = products.filter(p => p.seuil != null && p.qty <= p.seuil);
+  const sansSeuil = products.filter(p => p.seuil == null);
+  const shoppingGroups = computeShoppingList(products, productSuppliers, suppliers);
 
   const addProduct = async () => {
     if (!npName.trim() || !npQty) return;
     const tmpId = pidRef.current++;
-    const np = { id: tmpId, name: npName, category: npCat, qty: parseFloat(npQty), unit: npUnit, seuil: parseFloat(npSeuil) || 1, seuilOrange: parseFloat(npSeuil) * 2 || 2 };
+    const np = { id: tmpId, name: npName, category: npCat, qty: parseFloat(npQty), unit: npUnit, seuil: parseFloat(npSeuil) || null, seuilOrange: parseFloat(npSeuil) * 2 || null };
     setProducts(prev => [...prev, np]);
     setNpName(""); setNpQty(""); setNpSeuil(""); setShowAddProduct(false);
     const { data } = await supabase.from('products').insert({ name: np.name, category: np.category, unit: np.unit, qty: np.qty, seuil: np.seuil, seuil_orange: np.seuilOrange, stock_current: np.qty, stock_min: np.seuil }).select().single();
     if (data) setProducts(prev => prev.map(p => p.id === tmpId ? { ...p, _uuid: data.id } : p));
   };
 
-  const submitSortie = () => {
+  // Soumettre une sortie : insert en DB, statut pending
+  const submitSortie = async () => {
     if (!spProduct || !spQty) return;
-    setSorties(prev => [...prev, { id: sidRef.current++, productId: parseInt(spProduct), qty: parseFloat(spQty), empName: currentUserName, date: TODAY, time: new Date().getHours() + "h" + String(new Date().getMinutes()).padStart(2,"0"), status: "pending", note: spNote }]);
-    setSpProduct(""); setSpQty(""); setSpNote(""); setShowSortieModal(false);
+    const { data, error } = await supabase.from('stock_movements').insert({
+      product_id: spProduct, type: 'out', quantity: parseFloat(spQty),
+      reason: spNote, status: 'pending', employee_name: currentUserName,
+    }).select().single();
+    if (error) { alert('Erreur : ' + error.message); return; }
+    setSorties(prev => [...prev, {
+      id: data.id, productUuid: spProduct, qty: parseFloat(spQty),
+      empName: currentUserName, date: TODAY,
+      time: new Date().getHours() + "h" + String(new Date().getMinutes()).padStart(2, "0"),
+      status: 'pending', note: spNote,
+    }]);
+    setSpProduct(''); setSpQty(''); setSpNote(''); setShowSortieModal(false);
   };
 
-  const validateSortie = (sid) => {
+  // Valider une sortie : met à jour DB + décrémente le stock
+  const validateSortie = async (sid) => {
     const sortie = sorties.find(s => s.id === sid);
     if (!sortie) return;
-    setSorties(prev => prev.map(s => s.id === sid ? { ...s, status: "validated" } : s));
-    setProducts(prev => prev.map(p => {
-      if (p.id !== sortie.productId) return p;
-      const newQty = Math.max(0, Math.round((p.qty - sortie.qty) * 100) / 100);
-      if (p._uuid) supabase.from('products').update({ qty: newQty, stock_current: newQty }).eq('id', p._uuid).then(() => {});
-      return { ...p, qty: newQty };
-    }));
+    const prod = products.find(p => p._uuid === sortie.productUuid);
+    if (!prod) return;
+    const newQty = Math.max(0, Math.round((prod.qty - sortie.qty) * 100) / 100);
+    const { error } = await supabase.from('stock_movements')
+      .update({ status: 'validated', qty_before: prod.qty, qty_after: newQty }).eq('id', sid);
+    if (error) { alert('Erreur : ' + error.message); return; }
+    await supabase.from('products').update({ qty: newQty, stock_current: newQty }).eq('id', prod._uuid);
+    setSorties(prev => prev.map(s => s.id === sid ? { ...s, status: 'validated' } : s));
+    setProducts(prev => prev.map(p => p._uuid === prod._uuid ? { ...p, qty: newQty } : p));
   };
 
-  const rejectSortie = (sid) => {
-    setSorties(prev => prev.map(s => s.id === sid ? { ...s, status: "rejected" } : s));
+  // Refuser une sortie : met à jour le statut en DB
+  const rejectSortie = async (sid) => {
+    const { error } = await supabase.from('stock_movements').update({ status: 'rejected' }).eq('id', sid);
+    if (error) { alert('Erreur : ' + error.message); return; }
+    setSorties(prev => prev.map(s => s.id === sid ? { ...s, status: 'rejected' } : s));
   };
 
   const updateQty = (pid) => {
@@ -91,7 +110,8 @@ const StocksModule = ({ t, products, setProducts, sorties, setSorties, isGerant,
 
   const openEditProduct = (p) => {
     setEpName(p.name); setEpCat(p.category); setEpUnit(p.unit);
-    setEpSeuil(String(p.seuil)); setEpSeuilOrange(String(p.seuilOrange));
+    setEpSeuil(p.seuil != null ? String(p.seuil) : "");
+    setEpSeuilOrange(p.seuilOrange != null ? String(p.seuilOrange) : "");
     setConfirmDelete(false);
     setEditingProduct(p);
   };
@@ -100,7 +120,7 @@ const StocksModule = ({ t, products, setProducts, sorties, setSorties, isGerant,
     if (!editingProduct || !epName.trim()) return;
     setProducts(prev => prev.map(p => {
       if (p.id !== editingProduct.id) return p;
-      const updated = { ...p, name: epName, category: epCat, unit: epUnit, seuil: parseFloat(epSeuil) || 1, seuilOrange: parseFloat(epSeuilOrange) || 2 };
+      const updated = { ...p, name: epName, category: epCat, unit: epUnit, seuil: epSeuil !== "" ? parseFloat(epSeuil) : null, seuilOrange: epSeuilOrange !== "" ? parseFloat(epSeuilOrange) : null };
       if (p._uuid) supabase.from('products').update({ name: epName, category: epCat, unit: epUnit, seuil: updated.seuil, seuil_orange: updated.seuilOrange }).eq('id', p._uuid).then(() => {});
       return updated;
     }));
@@ -114,11 +134,15 @@ const StocksModule = ({ t, products, setProducts, sorties, setSorties, isGerant,
   };
 
   const sel = { padding: "8px 12px", borderRadius: 8, border: `1px solid ${t.border}`, fontSize: 13, fontFamily: F, background: t.surface, color: t.text, outline: "none", cursor: "pointer" };
-  const tabBtn = (key, label, count) => ({ display: "flex", alignItems: "center", gap: 6, padding: "8px 16px", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, fontFamily: F, borderRadius: 8, background: stockView === key ? t.primary : "transparent", color: stockView === key ? "#fff" : t.textMuted, transition: "all 0.15s" });
+  const tabBtn = (key) => ({ display: "flex", alignItems: "center", gap: 6, padding: "8px 16px", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, fontFamily: F, borderRadius: 8, background: stockView === key ? t.primary : "transparent", color: stockView === key ? "#fff" : t.textMuted, transition: "all 0.15s" });
 
-  // ── Inventory View ──
+  // ── Vue Inventaire ──
   const InventoryView = () => {
-    const filtered = filterCat ? products.filter(p => p.category === filterCat) : products;
+    // Filtre "sans seuil" prioritaire, sinon filtre catégorie
+    const filtered = sansSeuilOnly
+      ? products.filter(p => p.seuil == null && (filterCat === "" || p.category === filterCat))
+      : (filterCat ? products.filter(p => p.category === filterCat) : products);
+
     const grouped = {};
     filtered.forEach(p => { if (!grouped[p.category]) grouped[p.category] = []; grouped[p.category].push(p); });
 
@@ -133,12 +157,17 @@ const StocksModule = ({ t, products, setProducts, sorties, setSorties, isGerant,
               {items.map((p, i) => {
                 const urg = getUrgency(p);
                 const isEditing = editProduct === p.id;
+                // 'none' = seuil null : fond neutre, jamais d'alerte rouge
+                const rowBg = urg === "high" ? t.danger + "06" : "transparent";
                 return (
-                  <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderBottom: i < items.length - 1 ? `1px solid ${t.border}` : "none", background: urg === "high" ? t.danger + "06" : "transparent" }}>
-                    <div style={{ width: 8, height: 8, borderRadius: "50%", background: urg === "high" ? t.danger : urg === "medium" ? t.warning : t.success, flexShrink: 0 }} />
+                  <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderBottom: i < items.length - 1 ? `1px solid ${t.border}` : "none", background: rowBg }}>
+                    <div style={{ width: 8, height: 8, borderRadius: "50%", background: urg === "high" ? t.danger : urg === "medium" ? t.warning : urg === "none" ? t.border : t.success, flexShrink: 0 }} />
                     <div style={{ flex: 1, cursor: isGerant ? "pointer" : "default" }} onClick={() => { if (isGerant) openEditProduct(p); }}>
                       <div style={{ fontSize: 14, fontWeight: 500, display: "flex", alignItems: "center", gap: 6 }}>{p.name} {isGerant && <span style={{ fontSize: 10, color: t.textMuted, opacity: 0.4 }}>✎</span>}</div>
-                      <div style={{ fontSize: 12, color: t.textMuted }}>Seuil : {p.seuil} {p.unit}</div>
+                      <div style={{ fontSize: 12, color: t.textMuted }}>
+                        {p.seuil == null ? 'Seuil à définir' : `Seuil : ${p.seuil} ${p.unit}`}
+                        {supplierLinksOf(p._uuid, productSuppliers, suppliers).length === 0 && ' · sans fournisseur'}
+                      </div>
                     </div>
                     {isEditing ? (
                       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -164,7 +193,7 @@ const StocksModule = ({ t, products, setProducts, sorties, setSorties, isGerant,
     );
   };
 
-  // ── Sorties View ──
+  // ── Vue Sorties ──
   const SortiesView = () => (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       {pendingSorties.length > 0 && isGerant && (
@@ -172,7 +201,7 @@ const StocksModule = ({ t, products, setProducts, sorties, setSorties, isGerant,
           <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>{I.warning} <span>{pendingSorties.length} sortie{pendingSorties.length > 1 ? "s" : ""} en attente de validation</span></div>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {pendingSorties.map(s => {
-              const prod = products.find(p => p.id === s.productId);
+              const prod = products.find(p => p._uuid === s.productUuid);
               return (
                 <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 10, background: t.surface, border: `1px solid ${t.border}` }}>
                   <div style={{ flex: 1 }}>
@@ -190,7 +219,7 @@ const StocksModule = ({ t, products, setProducts, sorties, setSorties, isGerant,
       <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 4 }}>Historique des sorties</div>
       <div style={{ background: t.surface, borderRadius: 12, border: `1px solid ${t.border}`, overflow: "hidden" }}>
         {sorties.filter(s => s.status !== "pending").slice().reverse().map((s, i, arr) => {
-          const prod = products.find(p => p.id === s.productId);
+          const prod = products.find(p => p._uuid === s.productUuid);
           return (
             <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 16px", borderBottom: i < arr.length - 1 ? `1px solid ${t.border}` : "none" }}>
               <div style={{ width: 8, height: 8, borderRadius: "50%", background: s.status === "validated" ? t.success : t.danger, flexShrink: 0 }} />
@@ -207,25 +236,42 @@ const StocksModule = ({ t, products, setProducts, sorties, setSorties, isGerant,
     </div>
   );
 
-  // ── Shopping List ──
+  // ── Liste de courses groupée par fournisseur ──
   const ShoppingView = () => (
     <div>
-      {shoppingList.length === 0 ? (
+      {shoppingGroups.length === 0 ? (
         <div style={{ textAlign: "center", padding: 40, color: t.textMuted, fontSize: 14 }}>Tous les stocks sont OK — rien à acheter.</div>
       ) : (
-        <div style={{ background: t.surface, borderRadius: 12, border: `1px solid ${t.border}`, overflow: "hidden" }}>
-          <div style={{ padding: "14px 18px", background: t.surfaceAlt, fontWeight: 700, fontSize: 14, borderBottom: `1px solid ${t.border}` }}>Liste de courses — {shoppingList.length} produit{shoppingList.length > 1 ? "s" : ""}</div>
-          {shoppingList.map((p, i) => (
-            <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 18px", borderBottom: i < shoppingList.length - 1 ? `1px solid ${t.border}` : "none" }}>
-              <div style={{ width: 8, height: 8, borderRadius: "50%", background: t.danger, flexShrink: 0 }} />
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 14, fontWeight: 600 }}>{p.name}</div>
-                <div style={{ fontSize: 12, color: t.textMuted }}>{p.category} · Reste {p.qty} {p.unit} (seuil : {p.seuil})</div>
+        <>
+          {shoppingGroups.map((group, gi) => (
+            <div key={gi} style={{ background: t.surface, borderRadius: 12, border: `1px solid ${t.border}`, overflow: "hidden", marginBottom: 12 }}>
+              <div style={{ padding: "10px 16px", background: t.surfaceAlt, fontWeight: 700, fontSize: 14, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span>{group.supplier ? group.supplier.name : "Sans fournisseur"}</span>
+                <span style={{ fontWeight: 400, fontSize: 13, color: t.textMuted }}>
+                  {group.items.length} produit{group.items.length > 1 ? "s" : ""}
+                  {group.totalHt != null && ` · ≈ ${group.totalHt.toFixed(0)} € HT`}
+                </span>
               </div>
-              <div style={{ fontSize: 14, fontWeight: 700, color: t.primary }}>≈ {p.toOrder} {p.unit}</div>
+              {group.items.map((item, ii) => {
+                const urg = getUrgency(item.product);
+                return (
+                  <div key={item.product.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 18px", borderBottom: ii < group.items.length - 1 ? `1px solid ${t.border}` : "none" }}>
+                    <div style={{ width: 8, height: 8, borderRadius: "50%", background: urg === "high" ? t.danger : urg === "medium" ? t.warning : t.success, flexShrink: 0 }} />
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 14, fontWeight: 600 }}>{item.product.name}</div>
+                      <div style={{ fontSize: 12, color: t.textMuted }}>{item.product.category} · Reste {item.product.qty} {item.product.unit} (seuil : {item.product.seuil})</div>
+                    </div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: t.primary }}>≈ {item.toOrder} {item.product.unit}</div>
+                  </div>
+                );
+              })}
             </div>
           ))}
-        </div>
+          <button onClick={() => {
+            navigator.clipboard.writeText(formatShoppingListText(shoppingGroups));
+            alert('Liste copiée, prête à coller dans WhatsApp/SMS.');
+          }} style={{ width: "100%", marginTop: 12, padding: "12px 0", borderRadius: 10, border: "none", background: t.primary, color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: F }}>📤 Partager la liste (texte)</button>
+        </>
       )}
     </div>
   );
@@ -252,17 +298,37 @@ const StocksModule = ({ t, products, setProducts, sorties, setSorties, isGerant,
         </div>
       </div>
 
-      {/* Tabs + actions */}
+      {/* Onglets + actions */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 10 }}>
         <div style={{ display: "flex", gap: 6, background: t.surfaceAlt, borderRadius: 10, border: `1px solid ${t.border}`, padding: 4 }}>
           <button onClick={() => setStockView("inventory")} style={tabBtn("inventory")}>{I.box} Inventaire</button>
           <button onClick={() => setStockView("sorties")} style={tabBtn("sorties")}>{I.history} Sorties {pendingSorties.length > 0 && <span style={{ background: t.warning, color: "#fff", fontSize: 10, fontWeight: 700, padding: "1px 6px", borderRadius: 8, marginLeft: 4 }}>{pendingSorties.length}</span>}</button>
           <button onClick={() => setStockView("shopping")} style={tabBtn("shopping")}>{I.list} Liste de courses {alertProducts.length > 0 && <span style={{ background: t.danger, color: "#fff", fontSize: 10, fontWeight: 700, padding: "1px 6px", borderRadius: 8, marginLeft: 4 }}>{alertProducts.length}</span>}</button>
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          {stockView === "inventory" && <select value={filterCat} onChange={e => setFilterCat(e.target.value)} style={sel}><option value="">Toutes catégories</option>{stockCategories.map(c => <option key={c}>{c}</option>)}</select>}
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          {stockView === "inventory" && (
+            <>
+              <select value={filterCat} onChange={e => setFilterCat(e.target.value)} style={sel}>
+                <option value="">Toutes catégories</option>
+                {stockCategories.map(c => <option key={c}>{c}</option>)}
+              </select>
+              {sansSeuil.length > 0 && (
+                <button
+                  onClick={() => setSansSeuilOnly(v => !v)}
+                  style={{ padding: "8px 12px", borderRadius: 8, border: `1px solid ${t.border}`, fontSize: 13, fontWeight: 600, fontFamily: F, cursor: "pointer", background: sansSeuilOnly ? t.primary : t.surface, color: sansSeuilOnly ? "#fff" : t.text }}>
+                  Seuil à définir ({sansSeuil.length})
+                </button>
+              )}
+            </>
+          )}
           <button onClick={() => setShowSortieModal(true)} style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 16px", borderRadius: 8, border: `1px solid ${t.border}`, background: t.surface, color: t.text, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: F }}>📤 Déclarer une sortie</button>
-          {isGerant && <button onClick={() => setShowAddProduct(true)} style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 16px", borderRadius: 8, border: "none", background: t.primary, color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: F }}>{I.plus} Ajouter un produit</button>}
+          <button onClick={() => setShowInventaire(true)} style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 16px", borderRadius: 8, border: `1px solid ${t.border}`, background: t.surface, color: t.text, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: F }}>📋 Faire l'inventaire</button>
+          {isGerant && (
+            <button onClick={() => setShowFournisseurs(true)} style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 16px", borderRadius: 8, border: `1px solid ${t.border}`, background: t.surface, color: t.text, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: F }}>🏪 Fournisseurs</button>
+          )}
+          {isGerant && (
+            <button onClick={() => setShowAddProduct(true)} style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 16px", borderRadius: 8, border: "none", background: t.primary, color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: F }}>{I.plus} Ajouter un produit</button>
+          )}
         </div>
       </div>
 
@@ -270,7 +336,7 @@ const StocksModule = ({ t, products, setProducts, sorties, setSorties, isGerant,
       {stockView === "sorties" && <SortiesView />}
       {stockView === "shopping" && <ShoppingView />}
 
-      {/* Add product modal */}
+      {/* Modal ajout produit */}
       {showAddProduct && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={() => setShowAddProduct(false)}>
           <div style={{ background: t.surface, borderRadius: 16, padding: 28, width: 440, maxWidth: "92vw", boxShadow: "0 20px 60px rgba(0,0,0,0.15)" }} onClick={e => e.stopPropagation()}>
@@ -297,7 +363,7 @@ const StocksModule = ({ t, products, setProducts, sorties, setSorties, isGerant,
         </div>
       )}
 
-      {/* Sortie modal */}
+      {/* Modal déclaration sortie */}
       {showSortieModal && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={() => setShowSortieModal(false)}>
           <div style={{ background: t.surface, borderRadius: 16, padding: 28, width: 440, maxWidth: "92vw", boxShadow: "0 20px 60px rgba(0,0,0,0.15)" }} onClick={e => e.stopPropagation()}>
@@ -306,7 +372,13 @@ const StocksModule = ({ t, products, setProducts, sorties, setSorties, isGerant,
               <button onClick={() => setShowSortieModal(false)} style={{ background: "none", border: "none", cursor: "pointer", color: t.textMuted, padding: 4 }}>{I.x}</button>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-              <div><label style={{ fontSize: 12, fontWeight: 600, color: t.textMuted, marginBottom: 6, display: "block", fontFamily: F }}>Produit</label><select value={spProduct} onChange={e => setSpProduct(e.target.value)} style={{ ...sel, width: "100%" }}><option value="">Choisir un produit…</option>{products.map(p => <option key={p.id} value={p.id}>{p.name} ({p.qty} {p.unit})</option>)}</select></div>
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 600, color: t.textMuted, marginBottom: 6, display: "block", fontFamily: F }}>Produit</label>
+                <select value={spProduct} onChange={e => setSpProduct(e.target.value)} style={{ ...sel, width: "100%" }}>
+                  <option value="">Choisir un produit…</option>
+                  {products.map(p => <option key={p.id} value={p._uuid}>{p.name} ({p.qty} {p.unit})</option>)}
+                </select>
+              </div>
               <div><label style={{ fontSize: 12, fontWeight: 600, color: t.textMuted, marginBottom: 6, display: "block", fontFamily: F }}>Quantité prélevée</label><input value={spQty} onChange={e => setSpQty(e.target.value)} type="number" step="0.1" placeholder="0" style={{ ...sel, width: "100%" }} /></div>
               <div><label style={{ fontSize: 12, fontWeight: 600, color: t.textMuted, marginBottom: 6, display: "block", fontFamily: F }}>Note (optionnel)</label><input value={spNote} onChange={e => setSpNote(e.target.value)} placeholder="Ex: Prépa poulet frit midi" style={{ ...sel, width: "100%" }} /></div>
             </div>
@@ -319,7 +391,7 @@ const StocksModule = ({ t, products, setProducts, sorties, setSorties, isGerant,
         </div>
       )}
 
-      {/* Edit product modal */}
+      {/* Modal édition produit */}
       {editingProduct && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={() => { setEditingProduct(null); setConfirmDelete(false); }}>
           <div style={{ background: t.surface, borderRadius: 16, padding: 28, width: 440, maxWidth: "92vw", boxShadow: "0 20px 60px rgba(0,0,0,0.15)" }} onClick={e => e.stopPropagation()}>
@@ -352,6 +424,10 @@ const StocksModule = ({ t, products, setProducts, sorties, setSorties, isGerant,
           </div>
         </div>
       )}
+
+      {/* Stubs Tâches 5 et 6 */}
+      {showInventaire && <InventaireMode t={t} products={products} setProducts={setProducts} stockCategories={stockCategories} onClose={() => setShowInventaire(false)} />}
+      {showFournisseurs && <FournisseursModal t={t} suppliers={suppliers} setSuppliers={setSuppliers} productSuppliers={productSuppliers} onClose={() => setShowFournisseurs(false)} />}
     </div>
   );
 };
