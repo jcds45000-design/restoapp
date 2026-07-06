@@ -21,7 +21,7 @@ Source des données : mercuriale Kimiko (65 matières + 14 emballages, prix HT n
 
 | Décision | Choix |
 |---|---|
-| Périmètre import | 79 produits : 65 matières validées + 14 emballages (Kedy Pack par défaut) |
+| Périmètre import | 78 produits : 64 matières validées (65 lignes moins le doublon « Sauce BBQ Colona ») + 14 emballages (Kedy Pack par défaut) |
 | Données existantes | Table `products` vidée (données de démo), remplacée intégralement |
 | Catégories | Les 6 catégories larges existantes de l'appli, mapping depuis les 15 catégories mercuriale |
 | Seuils | Importés à `null` = « à définir », remplis au fil de l'eau dans l'appli |
