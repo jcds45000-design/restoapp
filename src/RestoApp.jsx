@@ -3,6 +3,7 @@ import { supabase } from './lib/supabase';
 import { repartir, CORVEES, pivotSemaine, decalerJours } from './lib/taskDispatch';
 import { I } from './lib/icons';
 import { findUserIndexByEmail } from './lib/users';
+import { alertProductsOf } from './lib/stock';
 const SettingsModule = lazy(() => import('./components/SettingsModule'));
 const StocksModule = lazy(() => import('./components/StocksModule'));
 const EquipeModule = lazy(() => import('./components/EquipeModule'));
@@ -396,7 +397,7 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
   };
 
   const empBadge = isGerant ? todayTasks.filter(tk => tk.status !== "done").length + overdueTasks.length : todayTasks.filter(tk => tk.assignee === currentUser.name && tk.status !== "done").length;
-  const stockAlertCount = products.filter(p => p.qty <= p.seuil).length;
+  const stockAlertCount = alertProductsOf(products).length;
   const pendingSortiesCount = sorties.filter(s => s.status === "pending").length;
 
   const navItems = isGerant ? [

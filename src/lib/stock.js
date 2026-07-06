@@ -17,12 +17,16 @@ export const supplierLinksOf = (productUuid, links, suppliers) =>
     .filter(l => l.supplier && l.supplier.active !== false)
     .sort((a, b) => (b.is_primary === true) - (a.is_primary === true));
 
+// Produits en alerte rouge. Un seuil null (« à définir ») n'est jamais en alerte.
+export const alertProductsOf = (products) =>
+  products.filter(p => p.seuil != null && p.qty <= p.seuil);
+
 // Produits en alerte rouge (seuil défini), groupés par fournisseur principal.
 // Retour : [{ supplier|null, items: [{ product, toOrder, priceHt }], totalHt|null }]
 // trié par nom de fournisseur, groupe « sans fournisseur » en dernier.
 export const computeShoppingList = (products, links, suppliers) => {
   const byKey = new Map();
-  products.filter(p => p.seuil != null && p.qty <= p.seuil).forEach(p => {
+  alertProductsOf(products).forEach(p => {
     const primary = supplierLinksOf(p._uuid, links, suppliers).find(l => l.is_primary);
     const target = p.seuilOrange != null ? p.seuilOrange : p.seuil;
     // target >= seuil >= qty ici (filtre au-dessus), donc (target - qty) >= 0

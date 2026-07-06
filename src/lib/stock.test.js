@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getUrgency, computeShoppingList, formatShoppingListText, countedTodayIds, supplierLinksOf } from './stock';
+import { getUrgency, computeShoppingList, formatShoppingListText, countedTodayIds, supplierLinksOf, alertProductsOf } from './stock';
 
 const P = (over) => ({ _uuid: 'u1', name: 'Poulet', category: 'Viandes & Poissons',
   unit: 'kg', qty: 0, seuil: null, seuilOrange: null, priceUnit: null, ...over });
@@ -128,5 +128,17 @@ describe('computeShoppingList — prix partiels', () => {
     const g2 = computeShoppingList(p2, l2, s2);
     expect(g2).toHaveLength(1);
     expect(g2[0].totalHt).toBeCloseTo(Math.ceil((8 - 1) * 1.2) * 10); // seulement A
+  });
+});
+
+describe('alertProductsOf', () => {
+  it('ignore les produits sans seuil, compte les produits sous le seuil', () => {
+    const products = [
+      P({ _uuid: 'u1', qty: 0, seuil: null }),               // à définir -> ignoré
+      P({ _uuid: 'u2', qty: 0, seuil: 2 }),                  // alerte
+      P({ _uuid: 'u3', qty: 5, seuil: 2 }),                  // ok
+      P({ _uuid: 'u4', qty: 2, seuil: 2 }),                  // alerte (égalité)
+    ];
+    expect(alertProductsOf(products).map(p => p._uuid)).toEqual(['u2', 'u4']);
   });
 });

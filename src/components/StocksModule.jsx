@@ -2,7 +2,7 @@ import { useState, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { I } from '../lib/icons';
 import { TODAY, fmt, Badge, stockCategories, F } from '../lib/foundation';
-import { getUrgency, computeShoppingList, formatShoppingListText, supplierLinksOf } from '../lib/stock';
+import { getUrgency, computeShoppingList, formatShoppingListText, supplierLinksOf, alertProductsOf } from '../lib/stock';
 import InventaireMode from './InventaireMode';
 import FournisseursModal from './FournisseursModal';
 import ProduitFournisseurs from './ProduitFournisseurs';
@@ -44,7 +44,7 @@ const StocksModule = ({ t, products, setProducts, sorties, setSorties, suppliers
 
   // Listes dérivées
   const pendingSorties = sorties.filter(s => s.status === "pending");
-  const alertProducts = products.filter(p => p.seuil != null && p.qty <= p.seuil);
+  const alertProducts = alertProductsOf(products);
   const sansSeuil = products.filter(p => p.seuil == null);
   const shoppingGroups = computeShoppingList(products, productSuppliers, suppliers);
 
