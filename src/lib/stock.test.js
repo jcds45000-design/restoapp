@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getUrgency, computeShoppingList, formatShoppingListText, countedTodayIds } from './stock';
+import { getUrgency, computeShoppingList, formatShoppingListText, countedTodayIds, supplierLinksOf } from './stock';
 
 const P = (over) => ({ _uuid: 'u1', name: 'Poulet', category: 'Viandes & Poissons',
   unit: 'kg', qty: 0, seuil: null, seuilOrange: null, priceUnit: null, ...over });
@@ -80,5 +80,53 @@ describe('countedTodayIds', () => {
       { product_id: 'u1', type: 'adjustment' },
     ]);
     expect([...ids].sort()).toEqual(['u1']);
+  });
+});
+
+describe('supplierLinksOf', () => {
+  const suppliers = [
+    { id: 's1', name: 'Metro', active: true },
+    { id: 's2', name: 'ABN Distribution', active: false }, // inactif
+  ];
+  const links = [
+    { product_id: 'u1', supplier_id: 's1', is_primary: false },
+    { product_id: 'u1', supplier_id: 's2', is_primary: true },  // inactif, principal déclaré
+    { product_id: 'u1', supplier_id: 'sX', is_primary: false }, // fournisseur inconnu
+  ];
+  it('exclut les fournisseurs inactifs et inconnus', () => {
+    const result = supplierLinksOf('u1', links, suppliers);
+    expect(result).toHaveLength(1);
+    expect(result[0].supplier.id).toBe('s1');
+  });
+  it('liste vide si aucun lien', () => {
+    expect(supplierLinksOf('u99', links, suppliers)).toHaveLength(0);
+  });
+  it('principal en premier', () => {
+    const both = [
+      { product_id: 'u1', supplier_id: 's1', is_primary: false },
+      { product_id: 'u1', supplier_id: 's3', is_primary: true },
+    ];
+    const sups = [
+      { id: 's1', name: 'Metro', active: true },
+      { id: 's3', name: 'Leclerc', active: true },
+    ];
+    expect(supplierLinksOf('u1', both, sups)[0].supplier.id).toBe('s3');
+  });
+});
+
+describe('computeShoppingList — prix partiels', () => {
+  it('totalHt = somme des seuls prix connus dans un groupe', () => {
+    const p2 = [
+      P({ _uuid: 'u1', name: 'A', qty: 1, seuil: 5, seuilOrange: 8 }),
+      P({ _uuid: 'u2', name: 'B', qty: 0, seuil: 5, seuilOrange: null }),
+    ];
+    const l2 = [
+      { product_id: 'u1', supplier_id: 's1', price_ht: 10, is_primary: true },
+      { product_id: 'u2', supplier_id: 's1', price_ht: null, is_primary: true },
+    ];
+    const s2 = [{ id: 's1', name: 'Metro', active: true }];
+    const g2 = computeShoppingList(p2, l2, s2);
+    expect(g2).toHaveLength(1);
+    expect(g2[0].totalHt).toBeCloseTo(Math.ceil((8 - 1) * 1.2) * 10); // seulement A
   });
 });

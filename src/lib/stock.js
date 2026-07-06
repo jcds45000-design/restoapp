@@ -1,6 +1,7 @@
 // Logique pure du stock : urgence, liste de courses, partage, progression.
 // Convention : seuil === null -> « à définir », jamais en alerte.
 
+// Précondition : p.qty >= 0 (garanti côté DB par enregistrer_comptage).
 export const getUrgency = (p) => {
   if (p.seuil == null) return 'none';
   if (p.qty <= p.seuil) return 'high';
@@ -24,6 +25,7 @@ export const computeShoppingList = (products, links, suppliers) => {
   products.filter(p => p.seuil != null && p.qty <= p.seuil).forEach(p => {
     const primary = supplierLinksOf(p._uuid, links, suppliers).find(l => l.is_primary);
     const target = p.seuilOrange != null ? p.seuilOrange : p.seuil;
+    // target >= seuil >= qty ici (filtre au-dessus), donc (target - qty) >= 0
     const toOrder = Math.max(1, Math.ceil((target - p.qty) * 1.2));
     const key = primary ? primary.supplier.id : '';
     if (!byKey.has(key)) byKey.set(key, { supplier: primary ? primary.supplier : null, items: [] });
@@ -38,7 +40,7 @@ export const computeShoppingList = (products, links, suppliers) => {
     .sort((a, b) => {
       if (!a.supplier) return 1;
       if (!b.supplier) return -1;
-      return a.supplier.name.localeCompare(b.supplier.name);
+      return a.supplier.name.localeCompare(b.supplier.name, 'fr', { sensitivity: 'base' });
     });
 };
 
