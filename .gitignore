@@ -18,3 +18,9 @@ cleanup_taches.mjs
 
 # Migration stock : contient fournisseurs et prix d'achat (dépôt public)
 supabase_migration3_stock.sql
+
+# Captures et artefacts de vérification locale
+.verif*/
+
+# Doc d'exploitation : infos internes de passation, ne pas publier (dépôt public)
+docs/EXPLOITATION.md
