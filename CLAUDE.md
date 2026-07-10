@@ -15,6 +15,8 @@ Application de gestion interne du restaurant Kimiko (fast-food coréen, Orléans
 - Produits : `id` = entier local d'affichage, `_uuid` = clé Supabase. Toujours joindre sur `_uuid`.
 - **Seuil `null` = « à définir »** : ne JAMAIS coercer en 0 (`0 <= null` vaut true en JS). Toute logique d'alerte passe par `src/lib/stock.js` (`getUrgency`, `alertProductsOf`).
 - Logique pure dans `src/lib/` avec tests vitest ; composants dans `src/components/` (RestoApp.jsx est le coordinateur, ne pas le faire grossir).
+- **Information complète avant compacité** : ne jamais masquer un contenu utile aux utilisateurs (compteurs, badges, textes) pour gagner de la place, sans l'accord de Jean-Claude.
+- Toute modification d'écran se vérifie AUSSI en viewport mobile (390x844) : l'équipe utilise l'appli au téléphone (inventaire, tâches).
 
 ## Sécurité (dépôt PUBLIC)
 
