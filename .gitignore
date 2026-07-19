@@ -24,3 +24,7 @@ supabase_migration3_stock.sql
 
 # Doc d'exploitation : infos internes de passation, ne pas publier (dépôt public)
 docs/EXPLOITATION.md
+
+# Module Rentabilité : jamais committés (dépôt public)
+supabase_migration4_rentabilite.sql
+import_carte.mjs
