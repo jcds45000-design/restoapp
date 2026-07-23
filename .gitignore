@@ -27,4 +27,6 @@ docs/EXPLOITATION.md
 
 # Module Rentabilité : jamais committés (dépôt public)
 supabase_migration4_rentabilite.sql
+supabase_migration5_rentabilite_recettes.sql
 import_carte.mjs
+import_recettes.mjs
