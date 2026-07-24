@@ -201,3 +201,12 @@ export function resumeRecettes(recettes, lignesByRecette, produits, productSuppl
     return { recette, coutParUnite: r.coutParUnite, incomplet: r.incomplet, raisons: r.raisons };
   });
 }
+
+// Résumé « sur place » d'un article de carte pour la liste. cout = coût matière (number) ou null.
+export function resumeArticle({ prixTTC, cout, tva }) {
+  const prixHT = ttcVersHT(Number(prixTTC) || 0, tva);
+  if (cout === null || cout === undefined) return { prixHT, marge: null, foodCostPct: null };
+  const marge = prixHT - cout;
+  const foodCostPct = prixHT > 0 ? (cout / prixHT) * 100 : null;
+  return { prixHT, marge, foodCostPct };
+}

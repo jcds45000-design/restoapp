@@ -4,7 +4,7 @@ import {
   coutMatiere, ttcVersHT, prixCanal, rentabiliteCanal,
   prixEquivalence, prixConseille, arrondi10ctsSup,
   couleurFoodCost, couleurMarge,
-  grouperLignesParRecette, coutRecette, coutArticle, suggestionRattachement, resumeRecettes,
+  grouperLignesParRecette, coutRecette, coutArticle, suggestionRattachement, resumeRecettes, resumeArticle,
 } from './rentabilite.js';
 
 const produits = [
@@ -307,5 +307,19 @@ describe('resumeRecettes', () => {
     expect(parId['r_sauce'].coutParUnite).toBeCloseTo(1.0, 6);
     expect(parId['r_plat'].coutParUnite).toBeCloseTo(0.08, 6);
     expect(parId['r_plat'].incomplet).toBe(false);
+  });
+});
+
+describe('resumeArticle', () => {
+  it('food cost et marge sur place (prix 6,00 € TTC, coût 1,05 €, TVA 10 %)', () => {
+    const r = resumeArticle({ prixTTC: 6, cout: 1.05, tva: 10 });
+    expect(r.prixHT).toBeCloseTo(5.4545, 3);
+    expect(r.marge).toBeCloseTo(4.4045, 3);
+    expect(r.foodCostPct).toBeCloseTo(19.25, 1);
+  });
+  it('coût null (article sans recette) -> valeurs nulles, pas 0', () => {
+    const r = resumeArticle({ prixTTC: 6, cout: null, tva: 10 });
+    expect(r.foodCostPct).toBeNull();
+    expect(r.marge).toBeNull();
   });
 });

@@ -7,6 +7,7 @@ import { alertProductsOf } from './lib/stock';
 const SettingsModule = lazy(() => import('./components/SettingsModule'));
 const StocksModule = lazy(() => import('./components/StocksModule'));
 const RecettesModule = lazy(() => import('./components/RecettesModule'));
+const RentabiliteCarteModule = lazy(() => import('./components/RentabiliteCarteModule'));
 const EquipeModule = lazy(() => import('./components/EquipeModule'));
 const PlanningModule = lazy(() => import('./components/PlanningModule'));
 const SemaineView = lazy(() => import('./components/SemaineView'));
@@ -408,6 +409,7 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
     { id: "planning", label: "Planning & RH", icon: I.calendar },
     { id: "stocks", label: "Stocks", icon: I.box, badge: stockAlertCount + pendingSortiesCount },
     { id: "recettes", label: "Recettes", icon: I.box },
+    { id: "rentabilite", label: "Rentabilité", icon: I.euro },
     { id: "orders", label: "Commandes", icon: I.orders },
     { id: "finances", label: "Finances", icon: I.euro },
     { id: "settings", label: "Paramètres", icon: I.settings },
@@ -587,13 +589,19 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
   products={products} productSuppliers={productSuppliers} /></Suspense>
         )}
 
+        {/* RENTABILITÉ (gérant seul) */}
+        {effectiveSection === "rentabilite" && isGerant && (
+          <Suspense fallback={<Loading />}><RentabiliteCarteModule t={t}
+  products={products} productSuppliers={productSuppliers} /></Suspense>
+        )}
+
         {/* PARAMÈTRES */}
         {effectiveSection === "settings" && isGerant && (
           <Suspense fallback={<Loading />}><SettingsModule t={t} F={F} authUser={authUser} categories={categories} onAddCategory={addCategory} onRenameCategory={renameCategory} onDeleteCategory={deleteCategory} /></Suspense>
         )}
 
         {/* Placeholder */}
-        {!["dashboard", "tasks", "planning", "stocks", "recettes", "equipe", "settings"].includes(effectiveSection) && (
+        {!["dashboard", "tasks", "planning", "stocks", "recettes", "rentabilite", "equipe", "settings"].includes(effectiveSection) && (
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "60vh", color: t.textMuted }}>
             <div style={{ fontSize: 48, marginBottom: 16, opacity: 0.3 }}>🚧</div>
             <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 4 }}>Module « {navItems.find(n => n.id === effectiveSection)?.label || effectiveSection} »</div>
