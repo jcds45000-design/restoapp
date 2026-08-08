@@ -61,3 +61,31 @@ export function parseBankCSV(text) {
   }
   return resultat;
 }
+
+// ─── Classification ───
+// D'abord par « Type operation » (colonne fiable de la banque), puis
+// affinage par libellé. Les règles vivent dans un objet unique, faciles
+// à ajuster ici ; un éditeur in-app est en phase 2 si besoin.
+
+export const REGLES_VIREMENT = [
+  { categorie: 'versement_deliveroo', motif: /DELIVEROO/i },
+  { categorie: 'versement_uber', motif: /STICHTING CUSTODIAN UB/i },   // Uber ne dit jamais « UBER »
+  { categorie: 'titres_resto', motif: /(EDENRED|PLUXEE|UP COOP|SWILE)/i },
+];
+
+export function categorizeBankLine(l) {
+  const type = (l.typeOperation || '').toLowerCase();
+  const texte = `${l.libelle} ${l.infos} ${l.reference}`;
+  if (type === 'remise cb') return 'remise_cb';
+  if (type === 'frais et extournes') return /CB COM/i.test(l.libelle) ? 'frais_cb' : 'autre';
+  if (type === 'depot especes') return 'depot_especes';
+  if (type === 'retrait especes') return 'retrait_especes';
+  if (type === 'virement') {
+    for (const r of REGLES_VIREMENT) if (r.motif.test(texte)) return r.categorie;
+    // Direct / click & collect : Stripe encaisse pour le webshop Fülle.
+    if (/STRIPE/i.test(texte) && /FULLE/i.test(texte)) return 'direct_click_collect';
+    return 'autre';
+  }
+  if (type === 'prelevement sdd' || type === 'paiement cb') return 'charges';
+  return 'autre';
+}
