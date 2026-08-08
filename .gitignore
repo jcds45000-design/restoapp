@@ -30,3 +30,6 @@ supabase_migration4_rentabilite.sql
 supabase_migration5_rentabilite_recettes.sql
 import_carte.mjs
 import_recettes.mjs
+
+# Module Finances : données bancaires, jamais committé (dépôt public)
+supabase_migration6_finances.sql
