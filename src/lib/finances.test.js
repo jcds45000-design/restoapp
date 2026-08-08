@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseBankCSV, categorizeBankLine, extractSaleDateFromCB, mondayOf, attachToSaleWeek } from './finances.js';
+import { parseBankCSV, categorizeBankLine, extractSaleDateFromCB, mondayOf, attachToSaleWeek, dedupKey, dedupBankLines } from './finances.js';
 
 // En-tête réel d'un export Caisse d'Épargne (vérifié le 09/08/2026).
 const HEADER_CE = 'Date comptable;Libelle simplifie;Reference;Informations complementaires;Type operation;Debit;Credit;Date operation;Date de valeur;Pointage';
@@ -135,5 +135,25 @@ describe('attachToSaleWeek', () => {
     const depot = { dateOperation: '2026-01-21', libelle: 'DEPOT ESPECE GAB 0000000' };
     expect(attachToSaleWeek(depot, 'depot_especes'))
       .toEqual({ semaineRattachee: '2026-01-19', dateEstimee: false });
+  });
+});
+
+describe('dedupBankLines', () => {
+  const a = { dateOperation: '2026-01-05', libelle: 'CB KIMIKO 040126', montant: 500 };
+  const b = { dateOperation: '2026-01-06', libelle: 'CB KIMIKO 050126', montant: 320 };
+  it('réimport à l\'identique → zéro nouvelle ligne', () => {
+    const existantes = new Set([dedupKey(a), dedupKey(b)]);
+    expect(dedupBankLines([a, b], existantes)).toEqual({ nouvelles: [], doublons: 2 });
+  });
+  it('chevauchement partiel → seules les inconnues passent', () => {
+    const existantes = new Set([dedupKey(a)]);
+    const { nouvelles, doublons } = dedupBankLines([a, b], existantes);
+    expect(nouvelles).toEqual([b]);
+    expect(doublons).toBe(1);
+  });
+  it('doublon INTERNE au même fichier → une seule occurrence gardée', () => {
+    const { nouvelles, doublons } = dedupBankLines([a, a], new Set());
+    expect(nouvelles).toEqual([a]);
+    expect(doublons).toBe(1);
   });
 });

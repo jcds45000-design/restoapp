@@ -123,3 +123,26 @@ export function attachToSaleWeek(l, categorie) {
   }
   return { semaineRattachee: mondayOf(l.dateOperation), dateEstimee: false };
 }
+
+// ─── Dédoublonnage ───
+// Clé métier (date, montant, libellé), identique à la contrainte unique
+// de finance_banque_lignes : réimporter un CSV qui chevauche une période
+// déjà importée ne compte JAMAIS deux fois une opération.
+
+export function dedupKey(l) {
+  return `${l.dateOperation}|${l.montant}|${l.libelle}`;
+}
+
+// clesExistantes : Set des clés déjà en base. → { nouvelles, doublons }
+export function dedupBankLines(lignes, clesExistantes) {
+  const vues = new Set(clesExistantes || []);
+  const nouvelles = [];
+  let doublons = 0;
+  for (const l of lignes) {
+    const cle = dedupKey(l);
+    if (vues.has(cle)) { doublons++; continue; }
+    vues.add(cle);
+    nouvelles.push(l);
+  }
+  return { nouvelles, doublons };
+}
