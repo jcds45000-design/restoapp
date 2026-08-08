@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseBankCSV, categorizeBankLine } from './finances.js';
+import { parseBankCSV, categorizeBankLine, extractSaleDateFromCB, mondayOf, attachToSaleWeek } from './finances.js';
 
 // En-tête réel d'un export Caisse d'Épargne (vérifié le 09/08/2026).
 const HEADER_CE = 'Date comptable;Libelle simplifie;Reference;Informations complementaires;Type operation;Debit;Credit;Date operation;Date de valeur;Pointage';
@@ -90,5 +90,50 @@ describe('categorizeBankLine', () => {
   });
   it('Type operation inconnu → autre', () => {
     expect(categorizeBankLine(ligne('Cheque', 'CHEQUE 123'))).toBe('autre');
+  });
+});
+
+describe('extractSaleDateFromCB', () => {
+  it('lit la date de vente JJMMAA dans le libellé', () => {
+    expect(extractSaleDateFromCB('CB KIMIKO 180126')).toBe('2026-01-18');
+  });
+  it('ne matche PAS un libellé de frais « CB COM KIMIKO … »', () => {
+    expect(extractSaleDateFromCB('CB COM KIMIKO 180126')).toBeNull();
+  });
+  it('rejette une date impossible', () => {
+    expect(extractSaleDateFromCB('CB KIMIKO 999999')).toBeNull();
+  });
+  it('rejette un libellé sans date', () => {
+    expect(extractSaleDateFromCB('VIR SEPA QUELCONQUE')).toBeNull();
+  });
+});
+
+describe('mondayOf', () => {
+  it('un dimanche se rattache au lundi qui le précède', () => {
+    expect(mondayOf('2026-01-18')).toBe('2026-01-12');
+  });
+  it('un lundi reste lui-même', () => {
+    expect(mondayOf('2026-01-12')).toBe('2026-01-12');
+  });
+  it('traverse un changement de mois', () => {
+    expect(mondayOf('2026-02-01')).toBe('2026-01-26');
+  });
+});
+
+describe('attachToSaleWeek', () => {
+  const remise = { dateOperation: '2026-01-20', libelle: 'CB KIMIKO 180126' };
+  it('remise CB → semaine de la date de VENTE (pas de l\'opération)', () => {
+    expect(attachToSaleWeek(remise, 'remise_cb'))
+      .toEqual({ semaineRattachee: '2026-01-12', dateEstimee: false });
+  });
+  it('remise CB sans date lisible → semaine de l\'opération, signalée estimée', () => {
+    const l = { dateOperation: '2026-01-20', libelle: 'CB KIMIKO SANSDATE' };
+    expect(attachToSaleWeek(l, 'remise_cb'))
+      .toEqual({ semaineRattachee: '2026-01-19', dateEstimee: true });
+  });
+  it('les autres catégories → semaine de l\'opération', () => {
+    const depot = { dateOperation: '2026-01-21', libelle: 'DEPOT ESPECE GAB 0000000' };
+    expect(attachToSaleWeek(depot, 'depot_especes'))
+      .toEqual({ semaineRattachee: '2026-01-19', dateEstimee: false });
   });
 });

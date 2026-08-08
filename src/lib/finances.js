@@ -89,3 +89,37 @@ export function categorizeBankLine(l) {
   if (type === 'prelevement sdd' || type === 'paiement cb') return 'charges';
   return 'autre';
 }
+
+// ─── Rattachement à la semaine de VENTE ───
+// Libellé « CB KIMIKO 180126 » : les 6 chiffres sont la date de vente
+// (JJMMAA). C'est ce qui permet de rapprocher une remise CB de la bonne
+// semaine, même si elle tombe en banque 1 à 3 jours plus tard.
+
+export function extractSaleDateFromCB(libelle) {
+  const m = /CB KIMIKO (\d{6})/.exec(libelle || '');
+  if (!m) return null;
+  const jj = m[1].slice(0, 2), mm = m[1].slice(2, 4), aa = m[1].slice(4, 6);
+  if (Number(jj) < 1 || Number(jj) > 31 || Number(mm) < 1 || Number(mm) > 12) return null;
+  return `20${aa}-${mm}-${jj}`;
+}
+
+// Lundi (ISO) de la semaine d'une date ISO. Calcul à midi UTC : aucun
+// risque de bascule de jour liée au fuseau.
+export function mondayOf(dateISO) {
+  const d = new Date(`${dateISO}T12:00:00Z`);
+  const decalage = (d.getUTCDay() + 6) % 7;   // lundi=0 … dimanche=6
+  d.setUTCDate(d.getUTCDate() - decalage);
+  return d.toISOString().slice(0, 10);
+}
+
+// → { semaineRattachee, dateEstimee }. Une remise CB se rattache à la
+// semaine de la date de vente ; à défaut (date illisible → signalé),
+// ou pour toute autre catégorie, à la semaine de la date d'opération.
+export function attachToSaleWeek(l, categorie) {
+  if (categorie === 'remise_cb') {
+    const dateVente = extractSaleDateFromCB(l.libelle);
+    if (dateVente) return { semaineRattachee: mondayOf(dateVente), dateEstimee: false };
+    return { semaineRattachee: mondayOf(l.dateOperation), dateEstimee: true };
+  }
+  return { semaineRattachee: mondayOf(l.dateOperation), dateEstimee: false };
+}
