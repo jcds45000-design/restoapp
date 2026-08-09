@@ -3,6 +3,8 @@ import { supabase } from '../lib/supabase';
 import { F } from '../lib/foundation.jsx';
 import {
   SEUILS_DEFAUT, computeCoffreTheorique, computeReconciliation, mondayOf,
+  parseBankCSV, categorizeBankLine, attachToSaleWeek, dedupBankLines, dedupKey,
+  aggregateBanqueParSemaine,
 } from '../lib/finances.js';
 
 const eur = (n) => `${(Number(n) || 0).toFixed(2)} €`;
@@ -81,6 +83,65 @@ export default function FinancesModule({ t }) {
     await recharger();
   };
 
+  const [importPreview, setImportPreview] = useState(null); // { classees, doublons }
+  const [importErreur, setImportErreur] = useState('');
+
+  // Ligne en base → forme attendue par le moteur (numeric PostgREST → Number).
+  const dbVersLigne = (l) => ({ montant: Number(l.montant), categorie: l.categorie, semaineRattachee: l.semaine_rattachee });
+
+  const analyserCSV = async (file) => {
+    setImportErreur('');
+    try {
+      const parsees = parseBankCSV(await file.text());
+      const existantes = new Set(lignes.map((l) => dedupKey({ dateOperation: l.date_operation, montant: Number(l.montant), libelle: l.libelle })));
+      const { nouvelles, doublons } = dedupBankLines(parsees, existantes);
+      const classees = nouvelles.map((l) => {
+        const categorie = categorizeBankLine(l);
+        return { ...l, categorie, ...attachToSaleWeek(l, categorie) };
+      });
+      setImportPreview({ classees, doublons });
+    } catch (e) {
+      setImportErreur(e.message); // format inattendu : échec propre, rien d'enregistré
+    }
+  };
+
+  // Recalcule agrégats banque + statuts de TOUTES les semaines à partir de
+  // TOUTES les lignes (anciennes + nouvelles). La colonne statut en base est
+  // une trace du calcul du moteur, jamais une saisie.
+  const recalculerSemaines = async (toutes) => {
+    const agregats = aggregateBanqueParSemaine(toutes);
+    for (const [lundi, banque] of Object.entries(agregats)) {
+      const { error } = await supabase.from('finance_semaines')
+        .upsert({ semaine_debut: lundi, ...banque }, { onConflict: 'semaine_debut' });
+      if (error) { setImportErreur(error.message); return; }
+    }
+    const { data: fraiches } = await supabase.from('finance_semaines').select('*');
+    const depotsTous = toutes.filter((l) => l.categorie === 'depot_especes').map((l) => ({ montant: l.montant }));
+    const coffreFrais = computeCoffreTheorique(fraiches || [], depotsTous, aujourdHui, seuils);
+    for (const s of fraiches || []) {
+      const r = computeReconciliation(s, !!coffreFrais.couvertes[s.semaine_debut], seuils, aujourdHui);
+      if (r.statut !== s.statut) await supabase.from('finance_semaines').update({ statut: r.statut }).eq('id', s.id);
+    }
+  };
+
+  const confirmerImport = async () => {
+    const { classees } = importPreview;
+    const dates = classees.map((l) => l.dateOperation).sort();
+    const { data: imp, error: e1 } = await supabase.from('finance_imports')
+      .insert({ nb_lignes: classees.length, periode_min: dates[0] || null, periode_max: dates[dates.length - 1] || null })
+      .select().single();
+    if (e1) { setImportErreur(e1.message); return; }
+    const { error: e2 } = await supabase.from('finance_banque_lignes').insert(classees.map((l) => ({
+      date_operation: l.dateOperation, libelle: l.libelle, montant: l.montant,
+      categorie: l.categorie, semaine_rattachee: l.semaineRattachee,
+      date_estimee: l.dateEstimee, import_id: imp.id,
+    })));
+    if (e2) { setImportErreur(e2.message); return; }
+    await recalculerSemaines([...lignes.map(dbVersLigne), ...classees]);
+    setImportPreview(null);
+    await recharger();
+  };
+
   const depots = useMemo(
     () => lignes.filter((l) => l.categorie === 'depot_especes').map((l) => ({ montant: l.montant })),
     [lignes]
@@ -110,11 +171,22 @@ export default function FinancesModule({ t }) {
   return (
     <div style={{ fontFamily: F }}>
       {/* ── Barre d'actions ── */}
-      <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
+      <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
         <button onClick={ouvrirSaisie} style={{ padding: '10px 18px', borderRadius: 10, border: 'none', background: t.primary, color: '#fff', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: F }}>
           Saisir les totaux caisse
         </button>
+        <label style={{ padding: '10px 18px', borderRadius: 10, border: `1.5px solid ${t.primary}`, color: t.primary, fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: F }}>
+          Importer le relevé banque (CSV)
+          <input type="file" accept=".csv,text/csv" style={{ display: 'none' }}
+            onChange={(e) => { if (e.target.files[0]) analyserCSV(e.target.files[0]); e.target.value = ''; }} />
+        </label>
       </div>
+
+      {importErreur && (
+        <div style={{ background: t.danger + '12', color: t.danger, borderRadius: 10, padding: '10px 14px', marginBottom: 14, fontSize: 13 }}>
+          {importErreur} — rien n'a été enregistré.
+        </div>
+      )}
 
       {/* ── Bandeau cockpit ── */}
       <div style={{ display: 'flex', gap: 16, alignItems: 'center', background: t.surface, border: `1px solid ${t.border}`, borderLeft: `5px solid ${couleurCoffre}`, borderRadius: 14, padding: '18px 22px', marginBottom: 20 }}>
@@ -209,6 +281,34 @@ export default function FinancesModule({ t }) {
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
               <button onClick={() => setShowSaisie(false)} style={{ padding: '9px 16px', borderRadius: 8, border: `1px solid ${t.border}`, background: 'transparent', color: t.text, cursor: 'pointer', fontFamily: F }}>Annuler</button>
               <button onClick={enregistrerSaisie} style={{ padding: '9px 16px', borderRadius: 8, border: 'none', background: t.primary, color: '#fff', fontWeight: 600, cursor: 'pointer', fontFamily: F }}>Enregistrer</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {importPreview && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
+          <div style={{ background: t.surface, borderRadius: 14, padding: 24, width: 460, maxWidth: '92vw', maxHeight: '85vh', overflow: 'auto' }}>
+            <h2 style={{ margin: '0 0 10px', fontSize: 17 }}>Récap avant enregistrement</h2>
+            <div style={{ fontSize: 13, marginBottom: 12 }}>
+              {importPreview.classees.length} nouvelle{importPreview.classees.length > 1 ? 's' : ''} ligne{importPreview.classees.length > 1 ? 's' : ''}
+              {importPreview.doublons > 0 && <span style={{ color: t.textMuted }}> · {importPreview.doublons} doublon{importPreview.doublons > 1 ? 's' : ''} ignoré{importPreview.doublons > 1 ? 's' : ''}</span>}
+            </div>
+            <ul style={{ margin: '0 0 12px', paddingLeft: 18, fontSize: 13 }}>
+              {Object.entries(importPreview.classees.reduce((c, l) => ({ ...c, [l.categorie]: (c[l.categorie] || 0) + 1 }), {}))
+                .map(([cat, n]) => <li key={cat}>{cat} : {n}</li>)}
+            </ul>
+            {importPreview.classees.some((l) => l.categorie === 'autre') && (
+              <div style={{ background: t.warning + '15', borderRadius: 10, padding: '10px 12px', marginBottom: 12 }}>
+                <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 6 }}>Non classées (règles de libellé à ajuster ?)</div>
+                {importPreview.classees.filter((l) => l.categorie === 'autre').map((l, i) => (
+                  <div key={i} style={{ fontSize: 12, color: t.textMuted }}>{l.dateOperation} · {l.libelle} · {eur(l.montant)}</div>
+                ))}
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button onClick={() => setImportPreview(null)} style={{ padding: '9px 16px', borderRadius: 8, border: `1px solid ${t.border}`, background: 'transparent', color: t.text, cursor: 'pointer', fontFamily: F }}>Annuler</button>
+              <button onClick={confirmerImport} style={{ padding: '9px 16px', borderRadius: 8, border: 'none', background: t.primary, color: '#fff', fontWeight: 600, cursor: 'pointer', fontFamily: F }}>Enregistrer</button>
             </div>
           </div>
         </div>
