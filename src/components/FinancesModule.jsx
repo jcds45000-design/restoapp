@@ -2,13 +2,18 @@ import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { F } from '../lib/foundation.jsx';
 import {
-  SEUILS_DEFAUT, computeCoffreTheorique, computeReconciliation,
+  SEUILS_DEFAUT, computeCoffreTheorique, computeReconciliation, mondayOf,
 } from '../lib/finances.js';
 
 const eur = (n) => `${(Number(n) || 0).toFixed(2)} €`;
 const fmtSemaine = (lundi) => {
   const d = new Date(`${lundi}T12:00:00Z`);
   return `Sem. du ${d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })}`;
+};
+const addDaysISO = (dateISO, n) => {
+  const d = new Date(`${dateISO}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
 };
 
 const STATUTS = {
@@ -46,6 +51,36 @@ export default function FinancesModule({ t }) {
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { recharger(); }, []);
 
+  const [showSaisie, setShowSaisie] = useState(false);
+  const [formSaisie, setFormSaisie] = useState(null);
+
+  const ouvrirSaisie = () => {
+    // Par défaut : la semaine écoulée (rituel du lundi).
+    setFormSaisie({
+      semaine_debut: mondayOf(addDaysISO(aujourdHui, -7)),
+      caisse_cb: '', caisse_especes: '', caisse_uber: '', caisse_deliveroo: '', caisse_autres: '',
+      caisse_source: 'manuelle',
+    });
+    setShowSaisie(true);
+  };
+
+  const enregistrerSaisie = async () => {
+    const f = formSaisie;
+    // Virgule décimale acceptée ; champ vide = null (jamais coercé en 0).
+    const num = (v) => (v === '' || v == null ? null : Number(String(v).replace(',', '.')));
+    if (num(f.caisse_cb) === null || num(f.caisse_especes) === null) return; // les 2 champs du rapprochement sont requis
+    const { error } = await supabase.from('finance_semaines').upsert({
+      semaine_debut: mondayOf(f.semaine_debut),
+      caisse_cb: num(f.caisse_cb), caisse_especes: num(f.caisse_especes),
+      caisse_uber: num(f.caisse_uber), caisse_deliveroo: num(f.caisse_deliveroo),
+      caisse_autres: num(f.caisse_autres),
+      caisse_source: f.caisse_source, caisse_saisi_le: new Date().toISOString(),
+    }, { onConflict: 'semaine_debut' });
+    if (error) { setErreur(error.message); return; }
+    setShowSaisie(false);
+    await recharger();
+  };
+
   const depots = useMemo(
     () => lignes.filter((l) => l.categorie === 'depot_especes').map((l) => ({ montant: l.montant })),
     [lignes]
@@ -74,6 +109,13 @@ export default function FinancesModule({ t }) {
 
   return (
     <div style={{ fontFamily: F }}>
+      {/* ── Barre d'actions ── */}
+      <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
+        <button onClick={ouvrirSaisie} style={{ padding: '10px 18px', borderRadius: 10, border: 'none', background: t.primary, color: '#fff', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: F }}>
+          Saisir les totaux caisse
+        </button>
+      </div>
+
       {/* ── Bandeau cockpit ── */}
       <div style={{ display: 'flex', gap: 16, alignItems: 'center', background: t.surface, border: `1px solid ${t.border}`, borderLeft: `5px solid ${couleurCoffre}`, borderRadius: 14, padding: '18px 22px', marginBottom: 20 }}>
         <div style={{ flex: 1 }}>
@@ -137,6 +179,38 @@ export default function FinancesModule({ t }) {
               })}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {showSaisie && formSaisie && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
+          <div style={{ background: t.surface, borderRadius: 14, padding: 24, width: 380, maxWidth: '92vw' }}>
+            <h2 style={{ margin: '0 0 4px', fontSize: 17 }}>Totaux caisse de la semaine</h2>
+            <p style={{ margin: '0 0 14px', fontSize: 12, color: t.textMuted }}>Depuis le rapport de la caisse (Z hebdo). CB et espèces sont requis.</p>
+            <label style={{ fontSize: 12, color: t.textMuted }}>Lundi de la semaine</label>
+            <input type="date" value={formSaisie.semaine_debut} onChange={(e) => setFormSaisie({ ...formSaisie, semaine_debut: e.target.value })}
+              style={{ width: '100%', padding: 8, margin: '4px 0 10px', borderRadius: 8, border: `1px solid ${t.border}`, fontFamily: F, boxSizing: 'border-box' }} />
+            {[['caisse_cb', 'CB'], ['caisse_especes', 'Espèces'], ['caisse_uber', 'Uber Eats'], ['caisse_deliveroo', 'Deliveroo'], ['caisse_autres', 'Autres']].map(([champ, label]) => (
+              <div key={champ} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+                <label style={{ flex: 1, fontSize: 13 }}>{label}</label>
+                <input inputMode="decimal" placeholder="0,00" value={formSaisie[champ]}
+                  onChange={(e) => setFormSaisie({ ...formSaisie, [champ]: e.target.value })}
+                  style={{ width: 120, padding: 8, borderRadius: 8, border: `1px solid ${t.border}`, textAlign: 'right', fontFamily: F }} />
+              </div>
+            ))}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '4px 0 16px' }}>
+              <label style={{ flex: 1, fontSize: 13 }}>Source</label>
+              <select value={formSaisie.caisse_source} onChange={(e) => setFormSaisie({ ...formSaisie, caisse_source: e.target.value })}
+                style={{ width: 136, padding: 8, borderRadius: 8, border: `1px solid ${t.border}`, fontFamily: F }}>
+                <option value="manuelle">Manuelle</option>
+                <option value="caisse_web">Back-office caisse</option>
+              </select>
+            </div>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button onClick={() => setShowSaisie(false)} style={{ padding: '9px 16px', borderRadius: 8, border: `1px solid ${t.border}`, background: 'transparent', color: t.text, cursor: 'pointer', fontFamily: F }}>Annuler</button>
+              <button onClick={enregistrerSaisie} style={{ padding: '9px 16px', borderRadius: 8, border: 'none', background: t.primary, color: '#fff', fontWeight: 600, cursor: 'pointer', fontFamily: F }}>Enregistrer</button>
+            </div>
+          </div>
         </div>
       )}
     </div>
