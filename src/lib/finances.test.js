@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseBankCSV, categorizeBankLine, extractSaleDateFromCB, mondayOf, attachToSaleWeek, dedupKey, dedupBankLines, aggregateBanqueParSemaine } from './finances.js';
+import { parseBankCSV, categorizeBankLine, extractSaleDateFromCB, mondayOf, attachToSaleWeek, dedupKey, dedupBankLines, aggregateBanqueParSemaine, SEUILS_DEFAUT, computeCoffreTheorique } from './finances.js';
 
 // En-tête réel d'un export Caisse d'Épargne (vérifié le 09/08/2026).
 const HEADER_CE = 'Date comptable;Libelle simplifie;Reference;Informations complementaires;Type operation;Debit;Credit;Date operation;Date de valeur;Pointage';
@@ -180,5 +180,51 @@ describe('aggregateBanqueParSemaine', () => {
       { montant: 42, categorie: 'autre', semaineRattachee: '2026-01-12' },
     ];
     expect(aggregateBanqueParSemaine(lignes)).toEqual({});
+  });
+});
+
+describe('computeCoffreTheorique', () => {
+  const semaines = [
+    { semaine_debut: '2026-01-05', caisse_especes: 500 },
+    { semaine_debut: '2026-01-12', caisse_especes: 400 },
+    { semaine_debut: '2026-01-19', caisse_especes: 300 },
+  ];
+  it('sans dépôt : solde = cumul, origine = semaine la plus ancienne', () => {
+    const r = computeCoffreTheorique(semaines, [], '2026-01-26');
+    expect(r.solde).toBe(1200);
+    expect(r.semaineOrigine).toBe('2026-01-05');
+    expect(r.couvertes).toEqual({ '2026-01-05': false, '2026-01-12': false, '2026-01-19': false });
+  });
+  it('un dépôt couvre la 1re semaine en FIFO, la 2e devient l\'origine', () => {
+    const r = computeCoffreTheorique(semaines, [{ montant: 500 }], '2026-01-26');
+    expect(r.solde).toBe(700);
+    expect(r.semaineOrigine).toBe('2026-01-12');
+    expect(r.couvertes['2026-01-05']).toBe(true);
+    expect(r.couvertes['2026-01-12']).toBe(false);
+  });
+  it('un dépôt PARTIEL ne solde pas la semaine (origine inchangée)', () => {
+    const r = computeCoffreTheorique(semaines, [{ montant: 300 }], '2026-01-26');
+    expect(r.semaineOrigine).toBe('2026-01-05');
+    expect(r.couvertes['2026-01-05']).toBe(false);
+  });
+  it('tout déposé : solde 0, pas d\'origine, pas d\'alerte', () => {
+    const r = computeCoffreTheorique(semaines, [{ montant: 1200 }], '2026-06-01');
+    expect(r.solde).toBe(0);
+    expect(r.semaineOrigine).toBeNull();
+    expect(r.alertes).toEqual([]);
+  });
+  it('alerte plafond quand le solde dépasse plafond_coffre', () => {
+    const grosses = [{ semaine_debut: '2026-01-05', caisse_especes: 2500 }];
+    const r = computeCoffreTheorique(grosses, [], '2026-01-12');
+    expect(r.alertes).toContain('plafond_coffre');
+  });
+  it('alerte ancienneté au-delà de anciennete_max_semaines', () => {
+    const r = computeCoffreTheorique(semaines, [], '2026-03-16'); // 10 semaines après le 05/01
+    expect(r.ancienneteSemaines).toBe(10);
+    expect(r.alertes).toContain('anciennete');
+  });
+  it('ignore les semaines sans saisie espèces (null)', () => {
+    const avecTrou = [...semaines, { semaine_debut: '2026-01-26', caisse_especes: null }];
+    expect(computeCoffreTheorique(avecTrou, [], '2026-02-02').solde).toBe(1200);
   });
 });

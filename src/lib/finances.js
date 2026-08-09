@@ -178,3 +178,52 @@ export function aggregateBanqueParSemaine(lignes) {
   }
   return parSemaine;
 }
+
+// ─── Seuils par défaut ───
+// Miroir de la table finance_settings. L'UI charge la table et passe les
+// valeurs au moteur ; ces défauts ne servent qu'en secours et aux tests.
+export const SEUILS_DEFAUT = {
+  tolerance_cb: 10,
+  plafond_coffre: 2000,
+  anciennete_max_semaines: 4,
+  bande_especes_min: 8,
+  bande_especes_max: 18,
+};
+
+// ─── Coffre théorique d'espèces (cumul) ───
+// « Combien d'espèces devraient être non déposées, là, maintenant, et
+// depuis quand ». Tout l'espèces part au dépôt (pas de fond de caisse à
+// soustraire). Les dépôts s'imputent en FIFO contre les semaines les
+// plus anciennes ; le rapprochement espèces se ferme au niveau cumulé,
+// pas semaine par semaine (le fils peut grouper les dépôts).
+
+const EPSILON = 0.005; // tolérance d'arrondi centimes
+
+export function computeCoffreTheorique(semaines, depots, aujourdHui, seuils = SEUILS_DEFAUT) {
+  const triees = [...(semaines || [])]
+    .filter((s) => s.caisse_especes !== null && s.caisse_especes !== undefined)
+    .sort((a, b) => a.semaine_debut.localeCompare(b.semaine_debut));
+  const totalEspeces = triees.reduce((t, s) => t + Number(s.caisse_especes), 0);
+  const totalDepots = (depots || []).reduce((t, d) => t + Number(d.montant), 0);
+  const solde = Math.round((totalEspeces - totalDepots) * 100) / 100;
+
+  // Imputation FIFO : chaque dépôt couvre d'abord la semaine la plus ancienne.
+  let reste = totalDepots;
+  let semaineOrigine = null;
+  const couvertes = {};
+  for (const s of triees) {
+    const du = Number(s.caisse_especes);
+    if (reste >= du - EPSILON) { couvertes[s.semaine_debut] = true; reste -= du; }
+    else {
+      couvertes[s.semaine_debut] = false;
+      if (semaineOrigine === null) semaineOrigine = s.semaine_debut;
+    }
+  }
+
+  const ancienneteSemaines = semaineOrigine === null ? 0
+    : Math.floor((new Date(`${aujourdHui}T12:00:00Z`) - new Date(`${semaineOrigine}T12:00:00Z`)) / (7 * 86400000));
+  const alertes = [];
+  if (solde > seuils.plafond_coffre) alertes.push('plafond_coffre');
+  if (semaineOrigine !== null && ancienneteSemaines > seuils.anciennete_max_semaines) alertes.push('anciennete');
+  return { solde, semaineOrigine, ancienneteSemaines, alertes, couvertes };
+}
