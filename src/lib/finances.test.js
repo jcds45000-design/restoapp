@@ -55,8 +55,11 @@ describe('categorizeBankLine', () => {
   it('Frais et extournes + CB COM → frais_cb', () => {
     expect(categorizeBankLine(ligne('Frais et extournes', 'CB COM KIMIKO 040126'))).toBe('frais_cb');
   });
-  it('Frais et extournes sans CB COM → autre', () => {
-    expect(categorizeBankLine(ligne('Frais et extournes', 'EXTOURNE DIVERSE'))).toBe('autre');
+  it('Frais et extournes hors CB COM (frais bancaires) → charges', () => {
+    // Calibré sur un vrai relevé : frais de virement instantané, commissions, forfait.
+    for (const lib of ['FRAIS 3 VIR INST', 'COMMISSIONS', 'FORFAIT LIBRE CONVERGENCE', '3 FRAIS DE VIREMENT SEPA']) {
+      expect(categorizeBankLine(ligne('Frais et extournes', lib))).toBe('charges');
+    }
   });
   it('Depot especes → depot_especes', () => {
     expect(categorizeBankLine(ligne('Depot especes', 'DEPOT ESPECE GAB 0000000'))).toBe('depot_especes');
@@ -87,6 +90,14 @@ describe('categorizeBankLine', () => {
   it('Prelevement SDD et Paiement CB → charges (hors rapprochement V1)', () => {
     expect(categorizeBankLine(ligne('Prelevement SDD', 'PRLV FOURNISSEUR'))).toBe('charges');
     expect(categorizeBankLine(ligne('Paiement CB', 'CUMUL DES DEBITS DIFFERES'))).toBe('charges');
+  });
+  it('Prets (échéances de prêt) → charges', () => {
+    expect(categorizeBankLine(ligne('Prets', 'ECH PRET 12E DU 01/01/2026'))).toBe('charges');
+  });
+  it('Remise virement (virement reçu de tiers, hors canal connu) → autre', () => {
+    // Type distinct de « Virement » ; virements reçus divers, non rattachés à un
+    // canal de vente. Laissés en « autre » (réévalués sur les flux post-reprise).
+    expect(categorizeBankLine(ligne('Remise virement', 'VIR SEPA UN TIERS QUELCONQUE'))).toBe('autre');
   });
   it('Type operation inconnu → autre', () => {
     expect(categorizeBankLine(ligne('Cheque', 'CHEQUE 123'))).toBe('autre');

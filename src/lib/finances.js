@@ -77,7 +77,9 @@ export function categorizeBankLine(l) {
   const type = (l.typeOperation || '').toLowerCase();
   const texte = `${l.libelle} ${l.infos} ${l.reference}`;
   if (type === 'remise cb') return 'remise_cb';
-  if (type === 'frais et extournes') return /CB COM/i.test(l.libelle) ? 'frais_cb' : 'autre';
+  // « Frais et extournes » = commissions CB (CB COM, rapprochées avec les remises)
+  // ou frais bancaires divers (frais de virement, commissions, forfait) = charges.
+  if (type === 'frais et extournes') return /CB COM/i.test(l.libelle) ? 'frais_cb' : 'charges';
   if (type === 'depot especes') return 'depot_especes';
   if (type === 'retrait especes') return 'retrait_especes';
   if (type === 'virement') {
@@ -86,7 +88,9 @@ export function categorizeBankLine(l) {
     if (/STRIPE/i.test(texte) && /FULLE/i.test(texte)) return 'direct_click_collect';
     return 'autre';
   }
-  if (type === 'prelevement sdd' || type === 'paiement cb') return 'charges';
+  // Décaissements récurrents (hors rapprochement) : prélèvements, débits différés,
+  // échéances de prêt. « Remise virement » (virements reçus de tiers) reste « autre ».
+  if (type === 'prelevement sdd' || type === 'paiement cb' || type === 'prets') return 'charges';
   return 'autre';
 }
 
