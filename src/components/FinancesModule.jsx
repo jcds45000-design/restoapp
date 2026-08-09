@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { F } from '../lib/foundation.jsx';
 import {
@@ -159,8 +159,18 @@ export default function FinancesModule({ t }) {
   }, [semaines, coffre, seuils, aujourdHui]);
   const nbAlertes = Object.values(recos).reduce((n, r) => n + r.alertes.length, 0) + coffre.alertes.length;
 
-  const couleurCoffre = coffre.solde > Number(seuils.plafond_coffre) ? t.danger
+  // Solde négatif = plus déposé que d'espèces déclarées en caisse : incohérence
+  // à corriger (saisie caisse manquante ou dépôt mal catégorisé).
+  const coffreNegatif = coffre.solde < 0;
+  const couleurCoffre = coffreNegatif || coffre.solde > Number(seuils.plafond_coffre) ? t.danger
     : coffre.solde > Number(seuils.plafond_coffre) * 0.7 ? t.warning : t.success;
+
+  const [semaineOuverte, setSemaineOuverte] = useState(null); // semaine_debut ou null
+
+  const enregistrerNotes = async (id, notes) => {
+    const { error } = await supabase.from('finance_semaines').update({ notes }).eq('id', id);
+    if (!error) setSemaines((prev) => prev.map((s) => (s.id === id ? { ...s, notes } : s)));
+  };
 
   if (chargement) return <div style={{ padding: 40, textAlign: 'center', opacity: 0.6, fontFamily: F }}>Chargement…</div>;
   if (erreur) return <div style={{ padding: 40, color: t.danger, fontFamily: F }}>Erreur : {erreur}</div>;
@@ -189,16 +199,31 @@ export default function FinancesModule({ t }) {
       )}
 
       {/* ── Bandeau cockpit ── */}
-      <div style={{ display: 'flex', gap: 16, alignItems: 'center', background: t.surface, border: `1px solid ${t.border}`, borderLeft: `5px solid ${couleurCoffre}`, borderRadius: 14, padding: '18px 22px', marginBottom: 20 }}>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 13, color: t.textMuted }}>Coffre théorique</div>
-          <div style={{ fontSize: 26, fontWeight: 700, color: couleurCoffre }}>{eur(coffre.solde)} non déposés</div>
-          {coffre.semaineOrigine && (
-            <div style={{ fontSize: 13, color: t.textMuted, marginTop: 2 }}>
-              depuis la {fmtSemaine(coffre.semaineOrigine).toLowerCase()} ({coffre.ancienneteSemaines} sem.)
-            </div>
+      <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap', background: t.surface, border: `1px solid ${t.border}`, borderLeft: `5px solid ${couleurCoffre}`, borderRadius: 14, padding: '18px 22px', marginBottom: 20 }}>
+        <div style={{ flex: 1, minWidth: 200 }}>
+          {coffreNegatif ? (
+            <>
+              <div style={{ fontSize: 13, color: t.danger, fontWeight: 700 }}>⚠ Dépôts supérieurs aux espèces déclarées</div>
+              <div style={{ fontSize: 26, fontWeight: 700, color: t.danger }}>{eur(coffre.solde)}</div>
+              <div style={{ fontSize: 13, color: t.textMuted, marginTop: 2 }}>Vérifie les totaux caisse saisis (ou la catégorie d'un dépôt).</div>
+            </>
+          ) : (
+            <>
+              <div style={{ fontSize: 13, color: t.textMuted }}>Coffre théorique</div>
+              <div style={{ fontSize: 26, fontWeight: 700, color: couleurCoffre }}>{eur(coffre.solde)} non déposés</div>
+              {coffre.semaineOrigine && (
+                <div style={{ fontSize: 13, color: t.textMuted, marginTop: 2 }}>
+                  depuis la {fmtSemaine(coffre.semaineOrigine).toLowerCase()} ({coffre.ancienneteSemaines} sem.)
+                </div>
+              )}
+            </>
           )}
         </div>
+        {coffre.solde > 0 && (
+          <div style={{ background: t.warning + '15', color: t.warning, borderRadius: 10, padding: '8px 14px', fontWeight: 700, fontSize: 13 }}>
+            À déposer au GAB : {eur(coffre.solde)}
+          </div>
+        )}
         {nbAlertes > 0 && (
           <div style={{ background: t.danger + '15', color: t.danger, borderRadius: 10, padding: '8px 14px', fontWeight: 700, fontSize: 13 }}>
             {nbAlertes} alerte{nbAlertes > 1 ? 's' : ''}
@@ -232,7 +257,8 @@ export default function FinancesModule({ t }) {
                 const r = recos[s.semaine_debut];
                 const st = STATUTS[r.statut];
                 return (
-                  <tr key={s.id}>
+                  <Fragment key={s.id}>
+                  <tr onClick={() => setSemaineOuverte(semaineOuverte === s.semaine_debut ? null : s.semaine_debut)} style={{ cursor: 'pointer' }}>
                     <td style={{ ...td, textAlign: 'left', fontWeight: 600 }}>{fmtSemaine(s.semaine_debut)}</td>
                     <td style={{ ...td, textAlign: 'left' }}>
                       <span style={{ background: st.color + '18', color: st.color, borderRadius: 8, padding: '3px 10px', fontWeight: 700, fontSize: 12 }}>{st.label}</span>
@@ -247,6 +273,41 @@ export default function FinancesModule({ t }) {
                       {r.ecartCb === null ? '—' : eur(r.ecartCb)}
                     </td>
                   </tr>
+                  {semaineOuverte === s.semaine_debut && (
+                    <tr>
+                      <td colSpan={9} style={{ padding: '14px 18px', background: t.surfaceAlt, borderBottom: `1px solid ${t.border}` }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, fontSize: 13 }}>
+                          <div>
+                            <div style={{ fontWeight: 700, marginBottom: 6 }}>Caisse (source : {s.caisse_source || '—'})</div>
+                            {[['CB', s.caisse_cb], ['Espèces', s.caisse_especes], ['Uber', s.caisse_uber], ['Deliveroo', s.caisse_deliveroo], ['Autres', s.caisse_autres]].map(([l, v]) => (
+                              <div key={l} style={{ display: 'flex', justifyContent: 'space-between' }}><span>{l}</span><span>{v == null ? '—' : eur(v)}</span></div>
+                            ))}
+                          </div>
+                          <div>
+                            <div style={{ fontWeight: 700, marginBottom: 6 }}>Banque (par semaine de vente)</div>
+                            {[['CB reçu', s.banque_cb], ['Dépôts espèces', s.banque_depot_especes], ['Uber', s.banque_uber], ['Deliveroo', s.banque_deliveroo], ['Direct (Stripe)', s.banque_direct], ['Titres resto', s.banque_titres]].map(([l, v]) => (
+                              <div key={l} style={{ display: 'flex', justifyContent: 'space-between' }}><span>{l}</span><span>{v == null ? '—' : eur(v)}</span></div>
+                            ))}
+                          </div>
+                        </div>
+                        <div style={{ fontWeight: 700, margin: '12px 0 6px', fontSize: 13 }}>Lignes du relevé rattachées</div>
+                        {lignes.filter((l) => l.semaine_rattachee === s.semaine_debut).length === 0
+                          ? <div style={{ fontSize: 12, color: t.textMuted }}>Aucune ligne importée pour cette semaine.</div>
+                          : lignes.filter((l) => l.semaine_rattachee === s.semaine_debut)
+                              .sort((a, b) => a.date_operation.localeCompare(b.date_operation))
+                              .map((l) => (
+                                <div key={l.id} style={{ display: 'flex', gap: 10, fontSize: 12, color: t.textMuted, padding: '2px 0' }}>
+                                  <span style={{ width: 78 }}>{l.date_operation}</span>
+                                  <span style={{ flex: 1 }}>{l.libelle}{l.date_estimee ? ' ⚠️ date estimée' : ''}</span>
+                                  <span style={{ width: 90, textAlign: 'right' }}>{eur(l.montant)}</span>
+                                  <span style={{ width: 130 }}>{l.categorie}</span>
+                                </div>
+                              ))}
+                        <NotesEditor semaine={s} onSave={enregistrerNotes} t={t} />
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
                 );
               })}
             </tbody>
@@ -313,6 +374,21 @@ export default function FinancesModule({ t }) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function NotesEditor({ semaine, onSave, t }) {
+  const [texte, setTexte] = useState(semaine.notes || '');
+  return (
+    <div style={{ marginTop: 10 }} onClick={(e) => e.stopPropagation()}>
+      <textarea value={texte} onChange={(e) => setTexte(e.target.value)} rows={2}
+        placeholder="Notes (explication d'un écart, correction…)"
+        style={{ width: '100%', padding: 8, borderRadius: 8, border: `1px solid ${t.border}`, fontFamily: F, fontSize: 13, boxSizing: 'border-box' }} />
+      <button onClick={() => onSave(semaine.id, texte)}
+        style={{ marginTop: 6, padding: '7px 14px', borderRadius: 8, border: 'none', background: t.primary, color: '#fff', fontWeight: 600, fontSize: 12, cursor: 'pointer', fontFamily: F }}>
+        Enregistrer la note
+      </button>
     </div>
   );
 }
