@@ -146,3 +146,35 @@ export function dedupBankLines(lignes, clesExistantes) {
   }
   return { nouvelles, doublons };
 }
+
+// ─── Agrégats banque par semaine ───
+// catégorie → colonne de finance_semaines. Les catégories absentes de la
+// table (frais, charges, retraits, autre) ne participent pas aux totaux
+// d'encaissement ; elles restent visibles ligne à ligne.
+
+const COLONNE_PAR_CATEGORIE = {
+  remise_cb: 'banque_cb',
+  depot_especes: 'banque_depot_especes',
+  versement_uber: 'banque_uber',
+  versement_deliveroo: 'banque_deliveroo',
+  direct_click_collect: 'banque_direct',
+  titres_resto: 'banque_titres',
+};
+
+// lignes : [{ montant, categorie, semaineRattachee }]
+// → { '2026-01-12': { banque_cb: 820, banque_depot_especes: 0, … } }
+export function aggregateBanqueParSemaine(lignes) {
+  const parSemaine = {};
+  for (const l of lignes) {
+    const colonne = COLONNE_PAR_CATEGORIE[l.categorie];
+    if (!colonne) continue;
+    if (!parSemaine[l.semaineRattachee]) {
+      parSemaine[l.semaineRattachee] = {
+        banque_cb: 0, banque_depot_especes: 0, banque_uber: 0,
+        banque_deliveroo: 0, banque_direct: 0, banque_titres: 0,
+      };
+    }
+    parSemaine[l.semaineRattachee][colonne] += l.montant;
+  }
+  return parSemaine;
+}

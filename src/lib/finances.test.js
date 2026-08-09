@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseBankCSV, categorizeBankLine, extractSaleDateFromCB, mondayOf, attachToSaleWeek, dedupKey, dedupBankLines } from './finances.js';
+import { parseBankCSV, categorizeBankLine, extractSaleDateFromCB, mondayOf, attachToSaleWeek, dedupKey, dedupBankLines, aggregateBanqueParSemaine } from './finances.js';
 
 // En-tête réel d'un export Caisse d'Épargne (vérifié le 09/08/2026).
 const HEADER_CE = 'Date comptable;Libelle simplifie;Reference;Informations complementaires;Type operation;Debit;Credit;Date operation;Date de valeur;Pointage';
@@ -155,5 +155,30 @@ describe('dedupBankLines', () => {
     const { nouvelles, doublons } = dedupBankLines([a, a], new Set());
     expect(nouvelles).toEqual([a]);
     expect(doublons).toBe(1);
+  });
+});
+
+describe('aggregateBanqueParSemaine', () => {
+  it('somme chaque catégorie d\'encaissement dans sa colonne, par semaine', () => {
+    const lignes = [
+      { montant: 500, categorie: 'remise_cb', semaineRattachee: '2026-01-12' },
+      { montant: 320, categorie: 'remise_cb', semaineRattachee: '2026-01-12' },
+      { montant: 600, categorie: 'depot_especes', semaineRattachee: '2026-01-19' },
+      { montant: 250, categorie: 'versement_uber', semaineRattachee: '2026-01-12' },
+      { montant: 90, categorie: 'titres_resto', semaineRattachee: '2026-01-12' },
+    ];
+    expect(aggregateBanqueParSemaine(lignes)).toEqual({
+      '2026-01-12': { banque_cb: 820, banque_depot_especes: 0, banque_uber: 250, banque_deliveroo: 0, banque_direct: 0, banque_titres: 90 },
+      '2026-01-19': { banque_cb: 0, banque_depot_especes: 600, banque_uber: 0, banque_deliveroo: 0, banque_direct: 0, banque_titres: 0 },
+    });
+  });
+  it('ignore frais_cb, charges, retraits et « autre » (hors encaissements)', () => {
+    const lignes = [
+      { montant: -2.5, categorie: 'frais_cb', semaineRattachee: '2026-01-12' },
+      { montant: -800, categorie: 'charges', semaineRattachee: '2026-01-12' },
+      { montant: -100, categorie: 'retrait_especes', semaineRattachee: '2026-01-12' },
+      { montant: 42, categorie: 'autre', semaineRattachee: '2026-01-12' },
+    ];
+    expect(aggregateBanqueParSemaine(lignes)).toEqual({});
   });
 });
