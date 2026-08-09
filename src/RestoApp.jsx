@@ -12,6 +12,7 @@ const EquipeModule = lazy(() => import('./components/EquipeModule'));
 const PlanningModule = lazy(() => import('./components/PlanningModule'));
 const SemaineView = lazy(() => import('./components/SemaineView'));
 const TaskTemplatesModule = lazy(() => import('./components/TaskTemplatesModule'));
+const FinancesModule = lazy(() => import('./components/FinancesModule'));
 
 const Loading = () => (<div style={{ padding: 40, textAlign: "center", fontSize: 14, opacity: 0.6, fontFamily: "'Noto Sans KR', sans-serif" }}>Chargement…</div>);
 import { TODAY, getMonday, WEEK_START, TODAY_LABEL, BANNER_IMAGE, fmt, fmtShort, addDays, getWeekDays, getDayName, isOverdue, calcHours, initialUsersData, initialSchedule, initialPointage, categoryList, priorityList, TASK_TEMPLATES, travailleOuverture, travailleFermeture, estPresent, initialTasks, stockCategories, initialProducts, initialSorties, stockAlerts, recentOrders, weeklyCA, themes, F, StatCard, MiniChart, Badge, StatusBadge, PriorityBadge, CategoryTag, OverdueBadge, CompletedByBadge, DateNav, TaskModal, TaskRow, ChecklistView, KanbanView, HistoryView } from './lib/foundation';
@@ -595,13 +596,18 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
   products={products} productSuppliers={productSuppliers} /></Suspense>
         )}
 
+        {/* FINANCES (gérant seul) */}
+        {effectiveSection === "finances" && isGerant && (
+          <Suspense fallback={<Loading />}><FinancesModule t={t} /></Suspense>
+        )}
+
         {/* PARAMÈTRES */}
         {effectiveSection === "settings" && isGerant && (
           <Suspense fallback={<Loading />}><SettingsModule t={t} F={F} authUser={authUser} categories={categories} onAddCategory={addCategory} onRenameCategory={renameCategory} onDeleteCategory={deleteCategory} /></Suspense>
         )}
 
         {/* Placeholder */}
-        {!["dashboard", "tasks", "planning", "stocks", "recettes", "rentabilite", "equipe", "settings"].includes(effectiveSection) && (
+        {!["dashboard", "tasks", "planning", "stocks", "recettes", "rentabilite", "finances", "equipe", "settings"].includes(effectiveSection) && (
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "60vh", color: t.textMuted }}>
             <div style={{ fontSize: 48, marginBottom: 16, opacity: 0.3 }}>🚧</div>
             <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 4 }}>Module « {navItems.find(n => n.id === effectiveSection)?.label || effectiveSection} »</div>
