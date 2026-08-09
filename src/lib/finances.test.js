@@ -274,3 +274,38 @@ describe('computeReconciliation', () => {
     expect(r.statut).toBe('attente_banque');
   });
 });
+
+describe('intégration : scénario type janvier (ventes fictives)', () => {
+  const csv = [
+    'Date comptable;Libelle simplifie;Reference;Informations complementaires;Type operation;Debit;Credit;Date operation;Date de valeur;Pointage',
+    // Une seule vraie remise CB pour la semaine du 05/01, et un petit dépôt.
+    '07/01/2026;CB KIMIKO 050126;00000120260105;CONTRAT 0000000 REM 000001;Remise CB;;+800,00;07/01/2026;08/01/2026;Non',
+    '20/01/2026;DEPOT ESPECE GAB 0000000;;;Depot especes;;+200,00;20/01/2026;20/01/2026;Non',
+  ].join('\n');
+  // La caisse prétend 4 semaines à 4000 € de CB et 900 € d'espèces chacune.
+  const semainesCaisse = ['2026-01-05', '2026-01-12', '2026-01-19', '2026-01-26'].map((lundi) => ({
+    semaine_debut: lundi,
+    caisse_cb: 4000, caisse_especes: 900, caisse_uber: 300, caisse_deliveroo: 100, caisse_autres: 0,
+  }));
+
+  it('le pipeline complet déclenche écart CB, plafond coffre et ancienneté', () => {
+    const { nouvelles } = dedupBankLines(parseBankCSV(csv), new Set());
+    const classees = nouvelles.map((l) => {
+      const categorie = categorizeBankLine(l);
+      return { ...l, categorie, ...attachToSaleWeek(l, categorie) };
+    });
+    const agregats = aggregateBanqueParSemaine(classees);
+    expect(agregats['2026-01-05'].banque_cb).toBe(800);
+
+    const depots = classees.filter((l) => l.categorie === 'depot_especes');
+    const coffre = computeCoffreTheorique(semainesCaisse, depots, '2026-04-06');
+    expect(coffre.solde).toBe(3400);                 // 4×900 − 200
+    expect(coffre.alertes).toContain('plafond_coffre');
+    expect(coffre.alertes).toContain('anciennete');
+
+    const s1 = { ...semainesCaisse[0], ...agregats['2026-01-05'] };
+    const r1 = computeReconciliation(s1, coffre.couvertes['2026-01-05'], SEUILS_DEFAUT, '2026-04-06');
+    expect(r1.statut).toBe('ecart');                 // 4000 en caisse, 800 en banque
+    expect(r1.alertes.some((a) => a.type === 'anomalie_cb')).toBe(true);
+  });
+});
