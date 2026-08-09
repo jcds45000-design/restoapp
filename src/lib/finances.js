@@ -227,3 +227,50 @@ export function computeCoffreTheorique(semaines, depots, aujourdHui, seuils = SE
   if (semaineOrigine !== null && ancienneteSemaines > seuils.anciennete_max_semaines) alertes.push('anciennete');
   return { solde, semaineOrigine, ancienneteSemaines, alertes, couvertes };
 }
+
+// ─── Rapprochement hebdomadaire et statuts ───
+
+// Fenêtre d'attente des remises CB : au-delà de N jours après la FIN de la
+// semaine, un manque côté banque n'est plus « en attente », c'est un écart.
+export const DELAI_REMISES_JOURS = 10;
+
+// semaine : ligne de finance_semaines. especesCouvertes : booléen issu de
+// computeCoffreTheorique().couvertes[semaine_debut]. On ne compare que ce
+// qui existe : sans totaux caisse, aucun écart n'est calculé.
+export function computeReconciliation(semaine, especesCouvertes, seuils = SEUILS_DEFAUT, aujourdHui) {
+  const vide = (v) => v === null || v === undefined;
+  if (vide(semaine.caisse_cb)) {
+    return { statut: 'en_cours', ecartCb: null, especesADeposer: null, alertes: [] };
+  }
+  const especesADeposer = Number(semaine.caisse_especes) || 0;
+  const banqueCb = vide(semaine.banque_cb) ? 0 : Number(semaine.banque_cb);
+  const ecartCb = Math.round((Number(semaine.caisse_cb) - banqueCb) * 100) / 100;
+  const cbOk = Math.abs(ecartCb) <= Number(seuils.tolerance_cb);
+
+  const finSemaine = new Date(`${semaine.semaine_debut}T12:00:00Z`);
+  finSemaine.setUTCDate(finSemaine.getUTCDate() + 6);
+  const joursDepuisFin = Math.floor((new Date(`${aujourdHui}T12:00:00Z`) - finSemaine) / 86400000);
+  const fenetreOuverte = joursDepuisFin < DELAI_REMISES_JOURS;
+
+  const alertes = [];
+  let statut;
+  if (cbOk && especesCouvertes) statut = 'reconciliee';
+  else if (!cbOk && fenetreOuverte) statut = 'attente_banque';
+  else if (!cbOk) {
+    // Fenêtre passée et la banque ne colle toujours pas : le détecteur
+    // d'anomalie « type janvier » (ventes en caisse jamais arrivées en banque).
+    statut = 'ecart';
+    alertes.push({ type: 'anomalie_cb', ecart: ecartCb });
+  } else statut = 'a_deposer'; // CB ok, il ne manque que le dépôt d'espèces
+
+  // Bande « normale » de la part d'espèces dans le CA de la semaine.
+  const totalCaisse = ['caisse_cb', 'caisse_especes', 'caisse_uber', 'caisse_deliveroo', 'caisse_autres']
+    .reduce((t, c) => t + (Number(semaine[c]) || 0), 0);
+  if (totalCaisse > 0) {
+    const part = (especesADeposer / totalCaisse) * 100;
+    if (part < Number(seuils.bande_especes_min) || part > Number(seuils.bande_especes_max)) {
+      alertes.push({ type: 'bande_especes', part: Math.round(part * 10) / 10 });
+    }
+  }
+  return { statut, ecartCb, especesADeposer, alertes };
+}

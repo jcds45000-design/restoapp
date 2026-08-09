@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseBankCSV, categorizeBankLine, extractSaleDateFromCB, mondayOf, attachToSaleWeek, dedupKey, dedupBankLines, aggregateBanqueParSemaine, SEUILS_DEFAUT, computeCoffreTheorique } from './finances.js';
+import { parseBankCSV, categorizeBankLine, extractSaleDateFromCB, mondayOf, attachToSaleWeek, dedupKey, dedupBankLines, aggregateBanqueParSemaine, SEUILS_DEFAUT, computeCoffreTheorique, computeReconciliation } from './finances.js';
 
 // En-tête réel d'un export Caisse d'Épargne (vérifié le 09/08/2026).
 const HEADER_CE = 'Date comptable;Libelle simplifie;Reference;Informations complementaires;Type operation;Debit;Credit;Date operation;Date de valeur;Pointage';
@@ -226,5 +226,51 @@ describe('computeCoffreTheorique', () => {
   it('ignore les semaines sans saisie espèces (null)', () => {
     const avecTrou = [...semaines, { semaine_debut: '2026-01-26', caisse_especes: null }];
     expect(computeCoffreTheorique(avecTrou, [], '2026-02-02').solde).toBe(1200);
+  });
+});
+
+describe('computeReconciliation', () => {
+  // Une semaine saine : CB caisse 1000 / banque 998, 12 % d'espèces.
+  const saine = {
+    semaine_debut: '2026-01-05',
+    caisse_cb: 1000, caisse_especes: 150, caisse_uber: 80, caisse_deliveroo: 20, caisse_autres: 0,
+    banque_cb: 998,
+  };
+  it('totaux caisse absents → en_cours, AUCUN écart calculé (pas de faux positif)', () => {
+    const r = computeReconciliation({ semaine_debut: '2026-01-05', caisse_cb: null, banque_cb: 500 }, true, SEUILS_DEFAUT, '2026-02-01');
+    expect(r).toEqual({ statut: 'en_cours', ecartCb: null, especesADeposer: null, alertes: [] });
+  });
+  it('CB dans la tolérance + espèces couvertes → reconciliee', () => {
+    const r = computeReconciliation(saine, true, SEUILS_DEFAUT, '2026-02-01');
+    expect(r.statut).toBe('reconciliee');
+    expect(r.ecartCb).toBe(2);
+    expect(r.alertes).toEqual([]);
+  });
+  it('CB ok mais espèces non couvertes → a_deposer, avec le montant à déposer', () => {
+    const r = computeReconciliation(saine, false, SEUILS_DEFAUT, '2026-02-01');
+    expect(r.statut).toBe('a_deposer');
+    expect(r.especesADeposer).toBe(150);
+  });
+  it('CB manquant en banque PENDANT la fenêtre → attente_banque, pas d\'alerte', () => {
+    const enAttente = { ...saine, banque_cb: 400 };
+    const r = computeReconciliation(enAttente, true, SEUILS_DEFAUT, '2026-01-13'); // 2 jours après la fin de semaine
+    expect(r.statut).toBe('attente_banque');
+    expect(r.alertes).toEqual([]);
+  });
+  it('CB manquant APRÈS la fenêtre → ecart + alerte anomalie (cas janvier)', () => {
+    const fictive = { ...saine, caisse_cb: 5000, banque_cb: 1000 };
+    const r = computeReconciliation(fictive, true, SEUILS_DEFAUT, '2026-02-15');
+    expect(r.statut).toBe('ecart');
+    expect(r.alertes.some((a) => a.type === 'anomalie_cb')).toBe(true);
+  });
+  it('part d\'espèces hors bande → alerte bande_especes (sans casser le statut)', () => {
+    const bizarre = { ...saine, caisse_especes: 600 }; // ~35 % d'espèces
+    const r = computeReconciliation(bizarre, false, SEUILS_DEFAUT, '2026-02-01');
+    expect(r.alertes.some((a) => a.type === 'bande_especes')).toBe(true);
+  });
+  it('banque_cb null pendant la fenêtre → attente d\'import, pas un écart', () => {
+    const fraiche = { ...saine, banque_cb: null };
+    const r = computeReconciliation(fraiche, true, SEUILS_DEFAUT, '2026-01-12');
+    expect(r.statut).toBe('attente_banque');
   });
 });
