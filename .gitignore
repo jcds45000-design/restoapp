@@ -11,6 +11,8 @@ dist
 pw_*.cjs
 verif_*.mjs
 extract*.mjs
+backup_*.mjs
+fix_*.mjs
 cleanup_taches.mjs
 
 # Sessions de brainstorming visuel (maquettes locales)
@@ -24,6 +26,22 @@ supabase_migration3_stock.sql
 
 # Doc d'exploitation : infos internes de passation, ne pas publier (dépôt public)
 docs/EXPLOITATION.md
+
+# Spécification maître pilotage : prix d'achat et données business, ne pas publier (dépôt public)
+docs/SPEC-MAITRE.md
+
+# Analyse et plan du chantier pilotage : décrivent des failles non corrigées (dépôt public)
+docs/ANALYSE-EXISTANT.md
+docs/PLAN-MIGRATION.md
+docs/AUDIT-SCHEMA-*.md
+docs/RAPPORT-PHASE0.md
+
+# Sauvegardes locales de données (contiennent les prix d'achat, dépôt public)
+.backups-produits/
+.backups-data/
+
+# Captures locales laissées par d'anciens scripts
+screenshot*.png
 
 # Module Rentabilité : jamais committés (dépôt public)
 supabase_migration4_rentabilite.sql
