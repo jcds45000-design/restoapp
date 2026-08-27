@@ -17,5 +17,11 @@ export default defineConfig([
       globals: globals.browser,
       parserOptions: { ecmaFeatures: { jsx: true } },
     },
+    rules: {
+      // Convention maison : foundation.jsx et les modules exportent composants ET
+      // helpers/constantes dans le même fichier. Cette règle (pure DX fast-refresh)
+      // noyait le lint sous ~160 erreurs sans valeur ; neutralisée en Phase 0.
+      'react-refresh/only-export-components': 'off',
+    },
   },
 ])

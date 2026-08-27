@@ -12,10 +12,8 @@ const themes = {
 
 export default function Login({ onLogin }) {
   const [themeKey, setThemeKey] = useState(() => localStorage.getItem('restoapp-theme') || 'kimiko');
-  const [mode, setMode] = useState('login'); // 'login' | 'signup'
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -32,33 +30,19 @@ export default function Login({ onLogin }) {
     setLoading(true);
     const { data, error: err } = await supabase.auth.signInWithPassword({ email, password });
     if (err) {
-      setError('Email ou mot de passe incorrect.');
+      // Ne pas tout maquiller en « mot de passe incorrect » : une panne réseau ou
+      // une base en pause doit se voir (spec §51 : jamais d'échec illisible).
+      setError(/invalid login credentials/i.test(err.message || '')
+        ? 'Email ou mot de passe incorrect.'
+        : `Connexion impossible : ${err.message || 'erreur inconnue'}`);
     } else {
       onLogin(data.user, themeKey);
     }
     setLoading(false);
   };
 
-  const handleSignup = async (e) => {
-    e.preventDefault();
-    setError('');
-    if (!name.trim()) { setError('Le prénom est requis.'); return; }
-    setLoading(true);
-    const { data, error: err } = await supabase.auth.signUp({
-      email,
-      password,
-      options: { data: { full_name: name.trim(), role: 'employe' } },
-    });
-    if (err) {
-      setError(err.message === 'User already registered' ? 'Cet email est déjà utilisé.' : err.message);
-    } else if (data.user && !data.session) {
-      setError('');
-      setMode('confirm');
-    } else if (data.user) {
-      onLogin(data.user, themeKey);
-    }
-    setLoading(false);
-  };
+  // L'inscription publique a été retirée (Phase 0, sécurité) : les comptes
+  // sont créés par le gérant depuis Paramètres ou Équipe.
 
   const inp = {
     width: '100%',
@@ -128,47 +112,13 @@ export default function Login({ onLogin }) {
           <h1 style={{ color:'#fff', fontSize: 28, fontWeight: 700, margin: 0, letterSpacing: -0.5 }}>Kimiko</h1>
           <p style={{ color:'rgba(255,255,255,0.45)', fontSize: 12, margin: '4px 0 0', fontWeight: 500, letterSpacing: 1, textTransform: 'uppercase' }}>Street food coréenne · Orléans</p>
           <p style={{ color:'rgba(255,255,255,0.55)', fontSize: 14, margin: '10px 0 0', fontWeight: 400 }}>
-            {mode === 'login' ? 'Connectez-vous à votre espace' : mode === 'signup' ? 'Créer votre compte employé' : ''}
+            Connectez-vous à votre espace
           </p>
         </div>
 
-        {/* Confirmation email */}
-        {mode === 'confirm' && (
-          <div style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: 48, marginBottom: 16 }}>
-              <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.9)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ display:'block', margin:'0 auto' }}>
-                <rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>
-              </svg>
-            </div>
-            <p style={{ color:'rgba(255,255,255,0.9)', fontSize: 16, fontWeight: 600, marginBottom: 8 }}>Vérifiez vos emails</p>
-            <p style={{ color:'rgba(255,255,255,0.55)', fontSize: 14, lineHeight: 1.6, marginBottom: 24 }}>
-              Un lien de confirmation a été envoyé à<br/><strong style={{ color:'rgba(255,255,255,0.8)' }}>{email}</strong>
-            </p>
-            <button onClick={() => setMode('login')} style={{ background:'rgba(255,255,255,0.12)', border:'1px solid rgba(255,255,255,0.2)', color:'#fff', borderRadius:10, padding:'10px 24px', fontSize:14, fontWeight:600, cursor:'pointer', fontFamily:F }}>
-              Retour à la connexion
-            </button>
-          </div>
-        )}
-
-        {/* Formulaire login / signup */}
-        {mode !== 'confirm' && (
-          <form onSubmit={mode === 'login' ? handleLogin : handleSignup}>
+        {/* Formulaire de connexion */}
+        <form onSubmit={handleLogin}>
             <div style={{ display:'flex', flexDirection:'column', gap: 14 }}>
-
-              {mode === 'signup' && (
-                <div>
-                  <label style={{ display:'block', fontSize:13, fontWeight:600, color:'rgba(255,255,255,0.7)', marginBottom:6 }}>Prénom et nom</label>
-                  <input
-                    type="text"
-                    value={name}
-                    onChange={e => setName(e.target.value)}
-                    placeholder="Thomas Da Silva"
-                    style={inp}
-                    required
-                    autoFocus={mode === 'signup'}
-                  />
-                </div>
-              )}
 
               <div>
                 <label style={{ display:'block', fontSize:13, fontWeight:600, color:'rgba(255,255,255,0.7)', marginBottom:6 }}>Adresse email</label>
@@ -179,7 +129,7 @@ export default function Login({ onLogin }) {
                   placeholder="prenom@kimiko.fr"
                   style={inp}
                   required
-                  autoFocus={mode === 'login'}
+                  autoFocus
                   autoComplete="email"
                 />
               </div>
@@ -191,11 +141,11 @@ export default function Login({ onLogin }) {
                     type={showPassword ? 'text' : 'password'}
                     value={password}
                     onChange={e => setPassword(e.target.value)}
-                    placeholder={mode === 'signup' ? 'Minimum 6 caractères' : '••••••••'}
+                    placeholder="••••••••"
                     style={{ ...inp, paddingRight: 44 }}
                     required
                     minLength={6}
-                    autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+                    autoComplete="current-password"
                   />
                   <button
                     type="button"
@@ -246,32 +196,16 @@ export default function Login({ onLogin }) {
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" style={{ animation:'spin 1s linear infinite' }}>
                       <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
                     </svg>
-                    {mode === 'login' ? 'Connexion...' : 'Création...'}
+                    Connexion...
                   </>
-                ) : mode === 'login' ? 'Se connecter' : 'Créer mon compte'}
+                ) : 'Se connecter'}
               </button>
             </div>
-          </form>
-        )}
+        </form>
 
-        {/* Toggle login / signup */}
-        {mode !== 'confirm' && (
-          <p style={{ textAlign:'center', marginTop:20, fontSize:14, color:'rgba(255,255,255,0.5)', margin:'20px 0 0' }}>
-            {mode === 'login' ? (
-              <>Pas encore de compte ?{' '}
-                <button onClick={() => { setMode('signup'); setError(''); }} style={{ background:'none', border:'none', color:'rgba(255,255,255,0.85)', fontWeight:700, cursor:'pointer', fontSize:14, fontFamily:F, textDecoration:'underline', padding:0 }}>
-                  Créer un compte
-                </button>
-              </>
-            ) : (
-              <>Déjà un compte ?{' '}
-                <button onClick={() => { setMode('login'); setError(''); }} style={{ background:'none', border:'none', color:'rgba(255,255,255,0.85)', fontWeight:700, cursor:'pointer', fontSize:14, fontFamily:F, textDecoration:'underline', padding:0 }}>
-                  Se connecter
-                </button>
-              </>
-            )}
-          </p>
-        )}
+        <p style={{ textAlign:'center', fontSize:13, color:'rgba(255,255,255,0.45)', margin:'20px 0 0' }}>
+          Pas encore de compte ? Demandez au gérant de vous en créer un.
+        </p>
 
         {/* Sélecteur de thème */}
         <div style={{ display:'flex', justifyContent:'center', gap:10, marginTop:28 }}>

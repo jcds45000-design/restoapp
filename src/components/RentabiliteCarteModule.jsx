@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import {
   CANAUX, SETTINGS_DEFAUT, grouperLignesParRecette, coutArticle, resumeArticle,

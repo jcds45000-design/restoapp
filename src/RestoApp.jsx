@@ -1,9 +1,11 @@
-import { useState, useRef, useMemo, useEffect, Fragment, lazy, Suspense } from "react";
+import { useState, useRef, useMemo, useEffect, lazy, Suspense } from "react";
 import { supabase } from './lib/supabase';
-import { repartir, CORVEES, pivotSemaine, decalerJours } from './lib/taskDispatch';
+import { repartir } from './lib/taskDispatch';
 import { I } from './lib/icons';
 import { findUserIndexByEmail } from './lib/users';
 import { alertProductsOf } from './lib/stock';
+import { statutPresence, syntheseJour, PRESENCE_LABELS } from './lib/presence';
+import { classerTaches, badgeTaches, dateFenetre, titresManquants } from './lib/taches';
 const SettingsModule = lazy(() => import('./components/SettingsModule'));
 const StocksModule = lazy(() => import('./components/StocksModule'));
 const RecettesModule = lazy(() => import('./components/RecettesModule'));
@@ -15,7 +17,7 @@ const TaskTemplatesModule = lazy(() => import('./components/TaskTemplatesModule'
 const FinancesModule = lazy(() => import('./components/FinancesModule'));
 
 const Loading = () => (<div style={{ padding: 40, textAlign: "center", fontSize: 14, opacity: 0.6, fontFamily: "'Noto Sans KR', sans-serif" }}>Chargement…</div>);
-import { TODAY, getMonday, WEEK_START, TODAY_LABEL, BANNER_IMAGE, fmt, fmtShort, addDays, getWeekDays, getDayName, isOverdue, calcHours, initialUsersData, initialSchedule, initialPointage, categoryList, priorityList, TASK_TEMPLATES, travailleOuverture, travailleFermeture, estPresent, initialTasks, stockCategories, initialProducts, initialSorties, stockAlerts, recentOrders, weeklyCA, themes, F, StatCard, MiniChart, Badge, StatusBadge, PriorityBadge, CategoryTag, OverdueBadge, CompletedByBadge, DateNav, TaskModal, TaskRow, ChecklistView, KanbanView, HistoryView } from './lib/foundation';
+import { TODAY, TODAY_LABEL, BANNER_IMAGE, fmt, addDays, calcHours, initialUsersData, initialPointage, categoryList, priorityList, TASK_TEMPLATES, travailleOuverture, travailleFermeture, estPresent, initialTasks, initialProducts, initialSorties, stockAlerts, themes, F, StatCard, StatusBadge, DateNav, TaskModal, ChecklistView, KanbanView, HistoryView } from './lib/foundation';
 
 // ═══════════════════════════════════════
 // ─── HELPERS ───
@@ -49,8 +51,26 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
     return () => window.removeEventListener("resize", check);
   }, []);
 
+  // TODAY est figé au chargement du bundle : si l'appli reste ouverte plusieurs jours
+  // (tablette du resto), on recharge quand la date réelle a changé.
+  useEffect(() => {
+    const check = () => {
+      const d = new Date();
+      const now = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      if (now !== TODAY) window.location.reload();
+    };
+    document.addEventListener('visibilitychange', check);
+    const id = setInterval(check, 5 * 60 * 1000);
+    return () => { document.removeEventListener('visibilitychange', check); clearInterval(id); };
+  }, []);
+
   const [currentUserIdx, setCurrentUserIdx] = useState(0);
   const [usersData, setUsersData] = useState(initialUsersData);
+  // Profil serveur { role, permissions } (migration 7) ; null = mode binaire historique.
+  const [profil, setProfil] = useState(null);
+  const migrationActive = profil !== null;
+  // La colonne tasks.kind existe-t-elle déjà en base ? (détectée au chargement)
+  const [kindDisponible, setKindDisponible] = useState(false);
   const [realIsGerant, setRealIsGerant] = useState(() => {
     const i = findUserIndexByEmail(initialUsersData, authUser?.email);
     return i >= 0 && initialUsersData[i].role === "gerant";
@@ -96,8 +116,11 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
         ouverture: travailleOuverture(shift),
         fermeture: travailleFermeture(shift),
       }));
-    // Pas de planning ce jour : on prend tous les actifs, présents toute la journée
+    // Pas de planning ce jour : mode dégradé (tous les actifs, présents toute la
+    // journée) + marqueur noPlanning pour afficher l'avertissement dans la modale.
+    let noPlanning = false;
     if (!presents.length) {
+      noPlanning = true;
       presents = employees
         .filter(u => !EXCLUS_REPARTITION.includes(u.name))
         .map(u => ({ name: u.name, isGerant: u.role === 'gerant', ouverture: true, fermeture: true }));
@@ -121,7 +144,8 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
     } catch {
       historique = [];
     }
-    setTemplateAssignments(repartir({ taches: templates.length ? templates : TASK_TEMPLATES, presents, historique, heures7j, seed }));
+    const assignments = repartir({ taches: templates.length ? templates : TASK_TEMPLATES, presents, historique, heures7j, seed });
+    setTemplateAssignments(noPlanning ? assignments.map(a => ({ ...a, noPlanning: true })) : assignments);
   };
 
   const openTemplateModal = async () => {
@@ -135,10 +159,15 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
 
   const loadTemplate = async () => {
     const pmap = { haute: 'high', moyenne: 'medium', basse: 'low' };
-    const inserts = templateAssignments.map(t => ({
+    // Anti-doublon : un double clic ne recharge pas les titres déjà présents ce jour-là.
+    const dejaLa = tasks.filter(tk => tk.dueDate === templateDate);
+    const aInserer = titresManquants(templateAssignments, dejaLa);
+    if (!aInserer.length) { setShowTemplateModal(false); return; }
+    const inserts = aInserer.map(t => ({
       title: t.title, assignee_name: t.assignee, category: t.category,
       priority: pmap[t.priority] || 'medium', status: 'todo',
       due_date: templateDate, completed_by_name: null,
+      ...(kindDisponible ? { kind: 'recurrente' } : {}),
     }));
     const { data } = await supabase.from('tasks').insert(inserts).select();
     if (data) {
@@ -164,9 +193,17 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
   useEffect(() => {
     const pmap = { high: 'haute', medium: 'moyenne', low: 'basse' };
     const loadData = async () => {
-      // Tâches
-      const { data: tData } = await supabase.from('tasks').select('*').order('created_at');
+      // Archivage des tâches récurrentes expirées (RPC de la migration 7).
+      // Tolérant tant que la migration n'est pas appliquée ou que l'utilisateur n'y a pas droit.
+      const { error: archErr } = await supabase.rpc('archiver_taches_expirees');
+      if (archErr && !/could not find|schema cache|non autorise/i.test(archErr.message)) {
+        console.warn('Archivage des tâches expirées :', archErr.message);
+      }
+      // Tâches : fenêtre glissante (plus jamais TOUT l'historique à chaque ouverture)
+      const { data: tData } = await supabase.from('tasks').select('*')
+        .gte('due_date', dateFenetre(TODAY)).order('created_at');
       if (tData?.length) {
+        setKindDisponible('kind' in tData[0]);
         setTasks(tData.map(t => ({
           id: t.id,
           title: t.title || '',
@@ -176,6 +213,7 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
           status: t.status || 'todo',
           dueDate: t.due_date || TODAY,
           completedBy: t.completed_by_name || null,
+          kind: t.kind || null,
         })));
       }
       // Produits (seuil null = « à définir », ne pas le convertir en 0)
@@ -249,6 +287,7 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
             dateEntree: e.date_entree || e.created_at?.slice(0, 10) || '',
             contrat: e.contrat || 'CDI',
             dateFin: e.date_fin || '',
+            appRole: e.app_role || null, // rempli après migration 7
           })),
         ];
         setUsersData(merged);
@@ -259,30 +298,35 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
         // Droits réels = rôle du compte connecté (et non l'utilisateur affiché).
         setRealIsGerant(idx >= 0 && merged[idx].role === 'gerant');
       }
+      // Profil serveur (rôle + permissions granulaires) : disponible après la
+      // migration 7 ; avant, l'appel échoue et on reste en mode binaire historique.
+      const { data: prof, error: profErr } = await supabase.rpc('mon_profil');
+      if (!profErr && prof && prof.role) setProfil(prof);
     };
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const ABSENCE_SHIFTS = ['repos', 'maladie', 'conges', 'absence'];
+  // Statuts de présence (spec §5) : un salarié non planifié n'est JAMAIS « absent ».
   const todayStaff = useMemo(() => employees.map(emp => {
-    const sched = schedule[emp.name]?.[TODAY];
-    const isAbsent = !sched || ABSENCE_SHIFTS.includes(sched);
-    const shiftLabels = { maladie: '🤒 Maladie', conges: '🌴 Congés', absence: '⚠️ Absent' };
+    const shift = schedule[emp.name]?.[TODAY];
+    const statut = statutPresence(shift);
     return {
       name: emp.name,
       role: emp.poste || emp.role,
-      shift: isAbsent ? (shiftLabels[sched] || '—') : sched,
-      status: isAbsent ? 'absent' : 'present'
+      shift: statut === 'prevu' ? shift : PRESENCE_LABELS[statut],
+      status: statut,
     };
   }), [employees, schedule]);
   const effectiveSection = (!isGerant && section === "dashboard") ? "tasks" : section;
   const effectiveDate = isGerant ? viewDate : TODAY;
-  const overdueTasks = useMemo(() => tasks.filter(isOverdue), [tasks]);
-  const todayTasks = useMemo(() => tasks.filter(tk => tk.dueDate === TODAY), [tasks]);
+  // Retards (spec §9) : seules les PONCTUELLES passées restent en retard ; les
+  // récurrentes passées sont expirées et ne gonflent plus badges ni compteurs.
+  const { enRetard: overdueTasks } = useMemo(() => classerTaches(tasks, tmpl, TODAY), [tasks, tmpl]);
+  const todayTasks = useMemo(() => tasks.filter(tk => tk.dueDate === TODAY && tk.status !== 'non_faite'), [tasks]);
   const viewTasks = useMemo(() => {
     if (effectiveDate === "overdue") return overdueTasks.filter(tk => !isGerant || !gerantMyTasks || tk.assignee === currentUser.name);
-    const base = tasks.filter(tk => tk.dueDate === effectiveDate);
+    const base = tasks.filter(tk => tk.dueDate === effectiveDate && tk.status !== 'non_faite');
     if (isGerant && gerantMyTasks) return base.filter(tk => tk.assignee === currentUser.name);
     return base;
   }, [tasks, effectiveDate, overdueTasks, isGerant, gerantMyTasks, currentUser.name]);
@@ -296,33 +340,44 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
     const { data } = await supabase.from('tasks').insert({
       title: td.title, assignee_name: td.assignee, category: td.category,
       priority: _pmap[td.priority] || 'medium', status: 'todo', due_date: td.dueDate,
+      ...(kindDisponible ? { kind: (addToTemplates && tmplCreneau) ? 'recurrente' : 'ponctuelle' } : {}),
     }).select().single();
     if (data) setTasks(p => p.map(tk => tk.id === tmpId ? { ...tk, id: data.id } : tk));
     if (addToTemplates && tmplCreneau) {
       await addTemplate({ title: td.title, category: td.category, priority: td.priority, creneau: tmplCreneau });
     }
   };
-  const toggleTask = (id) => setTasks(p => p.map(tk => {
-    if (tk.id !== id) return tk;
-    const ns = tk.status === "done" ? "todo" : "done";
+  // Écritures : mise à jour optimiste de l'écran, mais un échec Supabase est
+  // AFFICHÉ et l'affichage revient en arrière (avant : échec silencieux, l'UI mentait).
+  const majStatutTask = (id, ns) => {
+    const avant = tasks;
+    const tk = tasks.find(x => x.id === id);
+    if (!tk) return;
     const cb = ns === "done" ? (currentUser.name === "Jean Claude" ? tk.assignee : currentUser.name) : null;
-    supabase.from('tasks').update({ status: ns, completed_by_name: cb, updated_at: new Date().toISOString() }).eq('id', id).then(() => {});
-    return { ...tk, status: ns, completedBy: cb };
-  }));
-  const moveTask = (id, s) => setTasks(p => p.map(tk => {
-    if (tk.id !== id) return tk;
-    const cb = s === "done" ? (currentUser.name === "Jean Claude" ? tk.assignee : currentUser.name) : null;
-    supabase.from('tasks').update({ status: s, completed_by_name: cb, updated_at: new Date().toISOString() }).eq('id', id).then(() => {});
-    return { ...tk, status: s, completedBy: cb };
-  }));
+    setTasks(p => p.map(x => x.id === id ? { ...x, status: ns, completedBy: cb } : x));
+    supabase.from('tasks').update({ status: ns, completed_by_name: cb, updated_at: new Date().toISOString() }).eq('id', id).then(({ error }) => {
+      if (error) { alert(`La tâche n'a pas pu être enregistrée : ${error.message}`); setTasks(avant); }
+    });
+  };
+  const toggleTask = (id) => {
+    const tk = tasks.find(x => x.id === id);
+    if (tk) majStatutTask(id, tk.status === "done" ? "todo" : "done");
+  };
+  const moveTask = (id, s) => majStatutTask(id, s);
   const delTask = (id) => {
+    const avant = tasks;
     setTasks(p => p.filter(tk => tk.id !== id)); setEditingTask(null);
-    supabase.from('tasks').delete().eq('id', id).then(() => {});
+    supabase.from('tasks').delete().eq('id', id).then(({ error }) => {
+      if (error) { alert(`Suppression impossible : ${error.message}`); setTasks(avant); }
+    });
   };
   const delTasks = (ids) => {
     if (!ids.length) return;
+    const avant = tasks;
     setTasks(p => p.filter(tk => !ids.includes(tk.id)));
-    supabase.from('tasks').delete().in('id', ids).then(() => {});
+    supabase.from('tasks').delete().in('id', ids).then(({ error }) => {
+      if (error) { alert(`Suppression impossible : ${error.message}`); setTasks(avant); }
+    });
   };
   const [editingTask, setEditingTask] = useState(null);
   const [etTitle, setEtTitle] = useState("");
@@ -334,9 +389,12 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
   const openEditTask = (tk) => { setEtTitle(tk.title); setEtAssignee(tk.assignee); setEtCategory(tk.category); setEtPriority(tk.priority); setEtDueDate(tk.dueDate); setEtConfirmDel(false); setEditingTask(tk); };
   const saveEditTask = () => {
     if (!editingTask || !etTitle.trim()) return;
+    const avant = tasks;
     setTasks(p => p.map(tk => tk.id === editingTask.id ? { ...tk, title: etTitle, assignee: etAssignee, category: etCategory, priority: etPriority, dueDate: etDueDate } : tk));
     setEditingTask(null);
-    supabase.from('tasks').update({ title: etTitle, assignee_name: etAssignee, category: etCategory, priority: _pmap[etPriority] || 'medium', due_date: etDueDate, updated_at: new Date().toISOString() }).eq('id', editingTask.id).then(() => {});
+    supabase.from('tasks').update({ title: etTitle, assignee_name: etAssignee, category: etCategory, priority: _pmap[etPriority] || 'medium', due_date: etDueDate, updated_at: new Date().toISOString() }).eq('id', editingTask.id).then(({ error }) => {
+      if (error) { alert(`La modification n'a pas pu être enregistrée : ${error.message}`); setTasks(avant); }
+    });
   };
 
   // ─── CATÉGORIES DE TÂCHES (CRUD, gérant) ───
@@ -399,7 +457,7 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
     return { success: true };
   };
 
-  const empBadge = isGerant ? todayTasks.filter(tk => tk.status !== "done").length + overdueTasks.length : todayTasks.filter(tk => tk.assignee === currentUser.name && tk.status !== "done").length;
+  const empBadge = badgeTaches({ tasks, templates: tmpl, today: TODAY, pourNom: isGerant ? null : currentUser.name });
   const stockAlertCount = alertProductsOf(products).length;
   const pendingSortiesCount = sorties.filter(s => s.status === "pending").length;
 
@@ -533,7 +591,7 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
 
         {/* ÉQUIPE */}
         {effectiveSection === "equipe" && isGerant && (
-          <Suspense fallback={<Loading />}><EquipeModule t={t} employees={employees} usersData={usersData} setUsersData={setUsersData} isMobile={isMobile} /></Suspense>
+          <Suspense fallback={<Loading />}><EquipeModule t={t} employees={employees} usersData={usersData} setUsersData={setUsersData} isMobile={isMobile} migrationActive={migrationActive} /></Suspense>
         )}
 
         {/* PLANNING */}
@@ -559,12 +617,19 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
 
             <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr", gap: isMobile ? 10 : 16, marginBottom: isMobile ? 16 : 28 }}>
               {(() => {
-                const presents = todayStaff.filter(s => s.status === 'present');
-                const absents = todayStaff.filter(s => s.status === 'absent');
-                const total = todayStaff.length;
-                const absentNames = absents.map(s => s.name).join(', ');
-                const subTxt = absents.length === 0 ? 'Toute l\'équipe est présente' : `${absents.length} absence${absents.length > 1 ? 's' : ''} (${absentNames})`;
-                return <StatCard label="Équipe présente" value={`${presents.length}/${total}`} sub={subTxt} icon={I.users} color={absents.length > 0 ? t.warning : t.success} t={t} onClick={() => setSection("planning")} />;
+                const synth = syntheseJour(employees, schedule, TODAY);
+                let subTxt, color;
+                if (synth.aucunPlanning) {
+                  subTxt = 'Aucun planning saisi pour aujourd\'hui';
+                  color = t.textMuted;
+                } else if (synth.absents > 0) {
+                  subTxt = `${synth.absents} absence${synth.absents > 1 ? 's' : ''} (${synth.parStatut.absent.join(', ')})`;
+                  color = t.danger;
+                } else {
+                  subTxt = 'Aucune absence signalée';
+                  color = t.success;
+                }
+                return <StatCard label="Équipe prévue" value={`${synth.prevus}/${todayStaff.length}`} sub={subTxt} icon={I.users} color={color} t={t} onClick={() => setSection("planning")} />;
               })()}
               <StatCard label="Tâches du jour" value={`${todayTasks.filter(tk => tk.status === "done").length}/${todayTasks.length}`} sub={overdueTasks.length > 0 ? `${todayTasks.filter(tk => tk.status !== "done").length} restantes · ${overdueTasks.length} en retard` : `${todayTasks.filter(tk => tk.status !== "done").length} restantes`} icon={I.tasks} color={overdueTasks.length > 0 ? t.danger : t.primary} t={t} onClick={() => setSection("tasks")} />
             </div>
@@ -602,8 +667,8 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
         )}
 
         {/* PARAMÈTRES */}
-        {effectiveSection === "settings" && isGerant && (
-          <Suspense fallback={<Loading />}><SettingsModule t={t} F={F} authUser={authUser} categories={categories} onAddCategory={addCategory} onRenameCategory={renameCategory} onDeleteCategory={deleteCategory} /></Suspense>
+        {effectiveSection === "settings" && (
+          <Suspense fallback={<Loading />}><SettingsModule t={t} F={F} authUser={authUser} isGerant={isGerant} employees={employees} migrationActive={migrationActive} categories={categories} onAddCategory={addCategory} onRenameCategory={renameCategory} onDeleteCategory={deleteCategory} /></Suspense>
         )}
 
         {/* Placeholder */}
@@ -639,7 +704,7 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
       {isMobile && showMobileMenu && (
         <div style={{ position: "fixed", bottom: 60, left: 0, right: 0, background: t.surface, borderTop: `1px solid ${t.border}`, padding: "12px 16px", zIndex: 899, boxShadow: "0 -4px 20px rgba(0,0,0,0.1)" }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            {[{ id: "stocks", label: "Stocks", icon: I.box, badge: stockAlertCount+pendingSortiesCount }, { id: "orders", label: "Commandes", icon: I.orders }, { id: "finances", label: "Finances", icon: I.euro }, { id: "settings", label: "Paramètres", icon: I.settings }].map(item => (
+            {[{ id: "stocks", label: "Stocks", icon: I.box, badge: stockAlertCount+pendingSortiesCount }, { id: "recettes", label: "Recettes", icon: I.box }, { id: "rentabilite", label: "Rentabilité", icon: I.euro }, { id: "orders", label: "Commandes", icon: I.orders }, { id: "finances", label: "Finances", icon: I.euro }, { id: "settings", label: "Paramètres", icon: I.settings }].map(item => (
               <button key={item.id} onClick={() => { setSection(item.id); setShowMobileMenu(false); }} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", borderRadius: 10, border: "none", cursor: "pointer", background: effectiveSection === item.id ? t.primary + "12" : "transparent", color: effectiveSection === item.id ? t.primary : t.text, fontSize: 14, fontWeight: 500, fontFamily: F, textAlign: "left", width: "100%" }}>
                 {item.icon}{item.label}
               </button>

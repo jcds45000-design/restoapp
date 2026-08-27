@@ -26,7 +26,7 @@ Application de gestion interne du restaurant Kimiko (fast-food coréen, Orléans
 
 ## Vérification avant push (boucle rodée)
 
-1. `npm test` + `npm run build` verts (3 erreurs eslint pré-existantes connues dans StocksModule : composants internes, ne pas bloquer dessus).
+1. `npm test` + `npm run build` verts. `npm run lint` : ~40 erreurs `no-unused-vars` pré-existantes (imports fourre-tout depuis foundation) ; ne pas bloquer dessus, mais ne pas en AJOUTER.
 2. Vérification navigateur via la skill `/verif <module>` (Playwright, captures dans `.verif-<module>/`).
 3. **Validation visuelle du gérant en local AVANT tout push.**
 4. Push → Vercel déploie → re-vérifier en prod.

@@ -1,10 +1,13 @@
-import { useState, useRef, useMemo, useEffect, Fragment } from 'react';
+import { useState, useRef } from 'react';
 import { supabase } from '../lib/supabase';
-import { repartir, CORVEES, pivotSemaine, decalerJours } from '../lib/taskDispatch';
-import { I } from '../lib/icons';
-import { TODAY, getMonday, WEEK_START, TODAY_LABEL, BANNER_IMAGE, fmt, fmtShort, addDays, getWeekDays, getDayName, isOverdue, calcHours, initialUsersData, initialSchedule, initialPointage, categoryList, priorityList, TASK_TEMPLATES, travailleOuverture, travailleFermeture, estPresent, initialTasks, stockCategories, initialProducts, initialSorties, stockAlerts, recentOrders, weeklyCA, themes, F, StatCard, MiniChart, Badge, StatusBadge, PriorityBadge, CategoryTag, OverdueBadge, CompletedByBadge, DateNav, TaskModal, TaskRow, ChecklistView, KanbanView, HistoryView } from '../lib/foundation';
 
-const EquipeModule = ({ t, employees, usersData, setUsersData, isMobile }) => {
+import { I } from '../lib/icons';
+import { TODAY, fmt, F, Badge } from '../lib/foundation';
+import { ROLE_LABELS } from '../lib/permissions';
+
+// migrationActive : vrai quand la migration 7 (rôles/permissions) est appliquée en base ;
+// le sélecteur de rôle applicatif n'apparaît qu'à ce moment-là.
+const EquipeModule = ({ t, employees, setUsersData, isMobile, migrationActive = false }) => {
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingEmp, setEditingEmp] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -38,6 +41,7 @@ const EquipeModule = ({ t, employees, usersData, setUsersData, isMobile }) => {
   const [ePassword, setEPassword] = useState("");
   const [eShowPwd, setEShowPwd] = useState(false);
   const [eAccountMsg, setEAccountMsg] = useState(null);
+  const [eAppRole, setEAppRole] = useState("employe");
 
   const eidRef = useRef(50);
 
@@ -52,6 +56,7 @@ const EquipeModule = ({ t, employees, usersData, setUsersData, isMobile }) => {
     setEHeures(String(emp.heuresHebdo || "35"));
     setETel(emp.tel || ""); setEEmail(emp.email || ""); setEDate(emp.dateEntree || "");
     setEContrat(emp.contrat || "CDI"); setEDateFin(emp.dateFin || "");
+    setEAppRole(emp.appRole || (emp.role === "gerant" ? "admin" : "employe"));
     setConfirmDelete(false);
     setEditingEmp(emp);
   };
@@ -63,14 +68,15 @@ const EquipeModule = ({ t, employees, usersData, setUsersData, isMobile }) => {
       return;
     }
     const initials = eName.trim().split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
-    const updated = { name: eName, initials, poste: ePoste, tauxH: parseFloat(eTaux) || 0, heuresHebdo: parseFloat(eHeures) || 35, tel: eTel, email: eEmail, dateEntree: eDate, contrat: eContrat, dateFin: eContrat === "CDD" ? eDateFin : "" };
+    const updated = { name: eName, initials, poste: ePoste, tauxH: parseFloat(eTaux) || 0, heuresHebdo: parseFloat(eHeures) || 35, tel: eTel, email: eEmail, dateEntree: eDate, contrat: eContrat, dateFin: eContrat === "CDD" ? eDateFin : "", ...(migrationActive ? { appRole: eAppRole } : {}) };
     setUsersData(prev => prev.map(u => u.id === editingEmp.id ? { ...u, ...updated } : u));
     if (editingEmp._uuid) {
       supabase.from('employees').update({
         name: eName, poste: ePoste, phone: eTel, email: eEmail,
         taux_h: parseFloat(eTaux) || 0, heures_hebdo: parseFloat(eHeures) || 35,
         contrat: eContrat, date_fin: eContrat === "CDD" && eDateFin ? eDateFin : null, date_entree: eDate || null,
-      }).eq('id', editingEmp._uuid).then(({ error }) => { if (error) console.error('Supabase update error:', error.message); });
+        ...(migrationActive ? { app_role: eAppRole } : {}),
+      }).eq('id', editingEmp._uuid).then(({ error }) => { if (error) alert(`La fiche n'a pas pu être enregistrée : ${error.message}`); });
     }
     // Créer le compte Auth si demandé
     if (eCreateAccount && eEmail.trim() && ePassword) {
@@ -277,6 +283,7 @@ const EquipeModule = ({ t, employees, usersData, setUsersData, isMobile }) => {
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                 <div><label style={{ fontSize: 12, fontWeight: 600, color: t.textMuted, marginBottom: 6, display: "block" }}>Nom complet</label><input value={eName} onChange={e => setEName(e.target.value)} style={sel} /></div>
                 <div><label style={{ fontSize: 12, fontWeight: 600, color: t.textMuted, marginBottom: 6, display: "block" }}>Poste</label><select value={ePoste} onChange={e => setEPoste(e.target.value)} style={sel}>{["Cuisine","Caisse","Salle","Plonge","Polyvalent"].map(p => <option key={p}>{p}</option>)}</select></div>
+                {migrationActive && <div><label style={{ fontSize: 12, fontWeight: 600, color: t.textMuted, marginBottom: 6, display: "block" }}>Rôle dans l'application</label><select value={eAppRole} onChange={e => setEAppRole(e.target.value)} style={sel}>{Object.entries(ROLE_LABELS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></div>}
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
                 <div><label style={{ fontSize: 12, fontWeight: 600, color: t.textMuted, marginBottom: 6, display: "block" }}>Taux horaire (€)</label><input value={eTaux} onChange={e => setETaux(e.target.value)} type="number" step="0.01" style={sel} /></div>

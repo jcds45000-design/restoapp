@@ -1,8 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { I } from '../lib/icons';
+import { TOUTES_PERMISSIONS, PERMISSION_LABELS, ROLE_LABELS, permissionsParDefaut } from '../lib/permissions';
 
-const SettingsModule = ({ t, F, authUser, categories = [], onAddCategory, onRenameCategory, onDeleteCategory }) => {
+// migrationActive : vrai quand la migration 7 (rôles/permissions) est appliquée en base ;
+// la carte « Permissions individuelles » n'apparaît qu'à ce moment-là.
+const SettingsModule = ({ t, F, authUser, categories = [], onAddCategory, onRenameCategory, onDeleteCategory, isGerant = false, employees = [], migrationActive = false }) => {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -16,6 +19,45 @@ const SettingsModule = ({ t, F, authUser, categories = [], onAddCategory, onRena
   const [npShow, setNpShow] = useState(false);
   const [npLoading, setNpLoading] = useState(false);
   const [npResult, setNpResult] = useState(null); // { success, message }
+
+  // ── Permissions individuelles (visibles seulement après la migration 7) ──
+  const [permEmpId, setPermEmpId] = useState('');
+  const [permOverrides, setPermOverrides] = useState({}); // { cle: boolean } = dérogations en base
+  const [permBusy, setPermBusy] = useState(false);
+  const permEmp = employees.find(e => e._uuid === permEmpId) || null;
+  const permRole = permEmp ? (permEmp.appRole || (permEmp.role === 'gerant' ? 'admin' : 'employe')) : null;
+
+  useEffect(() => {
+    if (!migrationActive || !permEmpId) return;
+    supabase.from('employee_permissions').select('permission_key,granted').eq('employee_id', permEmpId)
+      .then(({ data, error }) => {
+        if (error) { alert(`Impossible de lire les permissions : ${error.message}`); return; }
+        const map = {};
+        (data || []).forEach(r => { map[r.permission_key] = r.granted; });
+        setPermOverrides(map);
+      });
+  }, [permEmpId, migrationActive]);
+
+  const togglePermission = async (cle) => {
+    if (!permEmp || permBusy) return;
+    const parDefaut = permissionsParDefaut(permRole).includes(cle);
+    const actuel = permOverrides[cle] ?? parDefaut;
+    const voulu = !actuel;
+    setPermBusy(true);
+    if (voulu === parDefaut) {
+      // Retour au défaut du rôle : on supprime la dérogation.
+      const { error } = await supabase.from('employee_permissions').delete()
+        .eq('employee_id', permEmpId).eq('permission_key', cle);
+      if (error) alert(`Échec : ${error.message}`);
+      else setPermOverrides(p => { const n = { ...p }; delete n[cle]; return n; });
+    } else {
+      const { error } = await supabase.from('employee_permissions')
+        .upsert({ employee_id: permEmpId, permission_key: cle, granted: voulu });
+      if (error) alert(`Échec : ${error.message}`);
+      else setPermOverrides(p => ({ ...p, [cle]: voulu }));
+    }
+    setPermBusy(false);
+  };
 
   const changePassword = async () => {
     if (npNew.length < 6) { setNpResult({ success: false, message: 'Le mot de passe doit faire au moins 6 caractères.' }); return; }
@@ -140,6 +182,8 @@ const SettingsModule = ({ t, F, authUser, categories = [], onAddCategory, onRena
           </button>
         </div>
       </div>
+      {/* Blocs réservés au gérant ; un salarié ne voit que « Mon mot de passe » */}
+      {isGerant && (<>
       <div style={{ background: t.surface, borderRadius: 16, border: `1px solid ${t.border}`, padding: 28, marginBottom: 20 }}>
         <h2 style={{ fontSize: 17, fontWeight: 700, margin: '0 0 6px', fontFamily: F }}>Catégories de tâches</h2>
         <p style={{ fontSize: 14, color: t.textMuted, margin: '0 0 20px', fontFamily: F }}>Ajoute, renomme ou supprime les catégories. Supprimer une catégorie déplace ses tâches dans « Autre ».</p>
@@ -185,6 +229,38 @@ const SettingsModule = ({ t, F, authUser, categories = [], onAddCategory, onRena
           </div>
         )}
       </div>
+
+      {migrationActive && (
+      <div style={{ background: t.surface, borderRadius: 16, border: `1px solid ${t.border}`, padding: 28, marginBottom: 20 }}>
+        <h2 style={{ fontSize: 17, fontWeight: 700, margin: '0 0 6px', fontFamily: F }}>Permissions individuelles</h2>
+        <p style={{ fontSize: 14, color: t.textMuted, margin: '0 0 16px', fontFamily: F }}>Le rôle (fiche Équipe) donne les droits par défaut ; ici tu accordes ou retires une permission précise à une personne.</p>
+        <select value={permEmpId} onChange={e => { setPermOverrides({}); setPermEmpId(e.target.value); }} style={{ ...inp, marginBottom: 14 }}>
+          <option value="">Choisir un salarié…</option>
+          {employees.filter(e => e._uuid).map(e => <option key={e._uuid} value={e._uuid}>{e.name}</option>)}
+        </select>
+        {permEmp && (permRole === 'admin' ? (
+          <p style={{ fontSize: 13, color: t.textMuted, fontFamily: F, margin: 0 }}>Rôle {ROLE_LABELS.admin} : accès complet, pas de réglage individuel.</p>
+        ) : (
+          <>
+            <p style={{ fontSize: 13, color: t.textMuted, fontFamily: F, margin: '0 0 10px' }}>Rôle : <strong style={{ color: t.text }}>{ROLE_LABELS[permRole]}</strong> — coche = permission accordée ; « dérogation » = différent du défaut du rôle.</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {TOUTES_PERMISSIONS.map(cle => {
+                const parDefaut = permissionsParDefaut(permRole).includes(cle);
+                const actuel = permOverrides[cle] ?? parDefaut;
+                const derog = cle in permOverrides;
+                return (
+                  <label key={cle} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 8, background: t.surfaceAlt, border: `1px solid ${derog ? t.warning + '66' : t.border}`, cursor: 'pointer', fontFamily: F, fontSize: 13 }}>
+                    <input type="checkbox" checked={actuel} disabled={permBusy} onChange={() => togglePermission(cle)} />
+                    <span style={{ flex: 1 }}>{PERMISSION_LABELS[cle]}</span>
+                    {derog && <span style={{ fontSize: 11, fontWeight: 700, color: t.warning }}>dérogation</span>}
+                  </label>
+                );
+              })}
+            </div>
+          </>
+        ))}
+      </div>
+      )}
 
       <div style={{ background: t.surface, borderRadius: 16, border: `1px solid ${t.border}`, padding: 28, marginBottom: 20 }}>
         <h2 style={{ fontSize: 17, fontWeight: 700, margin: '0 0 6px', fontFamily: F }}>Gestion des comptes</h2>
@@ -236,6 +312,7 @@ const SettingsModule = ({ t, F, authUser, categories = [], onAddCategory, onRena
           <strong style={{ color: t.text }}>Note :</strong> Le compte est actif immédiatement, sans email de confirmation. Communiquez le mot de passe temporaire à la personne et invitez-la à le changer.
         </p>
       </div>
+      </>)}
     </div>
   );
 };

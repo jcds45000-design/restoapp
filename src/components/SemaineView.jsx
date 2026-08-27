@@ -1,8 +1,8 @@
-import { useState, useRef, useMemo, useEffect, Fragment } from 'react';
+import { useState, useMemo, Fragment } from 'react';
 import { supabase } from '../lib/supabase';
 import { repartir, CORVEES, pivotSemaine, decalerJours, titresHorsCatalogue } from '../lib/taskDispatch';
-import { I } from '../lib/icons';
-import { TODAY, getMonday, WEEK_START, TODAY_LABEL, BANNER_IMAGE, fmt, fmtShort, addDays, getWeekDays, getDayName, isOverdue, calcHours, initialUsersData, initialSchedule, initialPointage, categoryList, priorityList, travailleOuverture, travailleFermeture, estPresent, initialTasks, stockCategories, initialProducts, initialSorties, stockAlerts, recentOrders, weeklyCA, themes, F, StatCard, MiniChart, Badge, StatusBadge, PriorityBadge, CategoryTag, OverdueBadge, CompletedByBadge, DateNav, TaskModal, TaskRow, ChecklistView, KanbanView, HistoryView } from '../lib/foundation';
+
+import { WEEK_START, fmt, fmtShort, addDays, calcHours, travailleOuverture, travailleFermeture, estPresent, F } from '../lib/foundation';
 
 const SemaineView = ({ tasks, setTasks, employees, schedule, t, templates }) => {
   const [weekStart, setWeekStart] = useState(WEEK_START); // lundi de la semaine affichée

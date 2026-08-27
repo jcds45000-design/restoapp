@@ -1,8 +1,8 @@
-import { useState, useRef, useMemo, useEffect, Fragment } from 'react';
+import { useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { repartir, CORVEES, pivotSemaine, decalerJours } from '../lib/taskDispatch';
+
 import { I } from '../lib/icons';
-import { TODAY, getMonday, WEEK_START, TODAY_LABEL, BANNER_IMAGE, fmt, fmtShort, addDays, getWeekDays, getDayName, isOverdue, calcHours, initialUsersData, initialSchedule, initialPointage, categoryList, priorityList, TASK_TEMPLATES, travailleOuverture, travailleFermeture, estPresent, initialTasks, stockCategories, initialProducts, initialSorties, stockAlerts, recentOrders, weeklyCA, themes, F, StatCard, MiniChart, Badge, StatusBadge, PriorityBadge, CategoryTag, OverdueBadge, CompletedByBadge, DateNav, TaskModal, TaskRow, ChecklistView, KanbanView, HistoryView } from '../lib/foundation';
+import { TODAY, WEEK_START, fmt, fmtShort, addDays, getWeekDays, getDayName, calcHours, F, Badge } from '../lib/foundation';
 
 const PlanningModule = ({ t, schedule, setSchedule, pointage, isGerant, currentUserName, employees }) => {
   const [planView, setPlanView] = useState("week"); // week | month | hours
@@ -24,25 +24,36 @@ const PlanningModule = ({ t, schedule, setSchedule, pointage, isGerant, currentU
   ];
 
   const updateShift = (empName, date, shiftValue) => {
+    const prevShift = (schedule[empName] || {})[date];
     setSchedule(prev => ({
       ...prev,
       [empName]: { ...(prev[empName] || {}), [date]: shiftValue }
     }));
-    supabase.from('schedule').upsert({ employee_name: empName, date, shift: shiftValue, updated_at: new Date().toISOString() }, { onConflict: 'employee_name,date' }).then(() => {});
+    supabase.from('schedule').upsert({ employee_name: empName, date, shift: shiftValue, updated_at: new Date().toISOString() }, { onConflict: 'employee_name,date' }).then(({ error }) => {
+      if (error) {
+        alert(`Le planning n'a pas pu être enregistré (${empName}, ${date}) : ${error.message}`);
+        setSchedule(prev => ({ ...prev, [empName]: { ...(prev[empName] || {}), [date]: prevShift } }));
+      }
+    });
   };
 
-  const duplicateWeek = () => {
+  // Duplication : persistée en base (avant, seul l'écran changeait et tout était
+  // perdu au rechargement). On ne copie que les cellules réellement saisies.
+  const duplicateWeek = async () => {
     const nextWeekDays = getWeekDays(addDays(weekStart, 7));
+    const rows = [];
+    employees.forEach(emp => {
+      const empSched = schedule[emp.name] || {};
+      days.forEach((d, i) => {
+        if (empSched[d]) rows.push({ employee_name: emp.name, date: nextWeekDays[i], shift: empSched[d], updated_at: new Date().toISOString() });
+      });
+    });
+    if (!rows.length) { alert('Rien à dupliquer : la semaine affichée est vide.'); return; }
+    const { error } = await supabase.from('schedule').upsert(rows, { onConflict: 'employee_name,date' });
+    if (error) { alert(`Échec de la duplication : ${error.message}`); return; }
     setSchedule(prev => {
       const updated = { ...prev };
-      employees.forEach(emp => {
-        const empSched = { ...(updated[emp.name] || {}) };
-        days.forEach((d, i) => {
-          const sourceShift = empSched[d] || "repos";
-          empSched[nextWeekDays[i]] = sourceShift;
-        });
-        updated[emp.name] = empSched;
-      });
+      rows.forEach(r => { updated[r.employee_name] = { ...(updated[r.employee_name] || {}), [r.date]: r.shift }; });
       return updated;
     });
     setDupConfirm(true);
@@ -152,13 +163,15 @@ const PlanningModule = ({ t, schedule, setSchedule, pointage, isGerant, currentU
 
   // ── Monthly Overview ──
   const MonthView = () => {
-    const monthDays = Array.from({ length: 31 }, (_, i) => {
-      const d = `2026-05-${String(i + 1).padStart(2, "0")}`;
-      try { new Date(d + "T00:00:00").toISOString(); return d; } catch { return null; }
-    }).filter(Boolean);
+    // Mois de la semaine affichée (avant : mai 2026 codé en dur)
+    const [y, m] = weekStart.split('-').map(Number);
+    const nbJours = new Date(y, m, 0).getDate();
+    const monthDays = Array.from({ length: nbJours }, (_, i) => `${y}-${String(m).padStart(2, '0')}-${String(i + 1).padStart(2, '0')}`);
+    const moisLabel = new Date(`${weekStart}T00:00:00`).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
 
     return (
       <div style={{ overflowX: "auto" }}>
+        <div style={{ fontSize: 14, fontWeight: 700, fontFamily: F, marginBottom: 10, textTransform: 'capitalize' }}>{moisLabel}</div>
         <table style={{ borderCollapse: "separate", borderSpacing: 0, fontFamily: F, fontSize: 11 }}>
           <thead>
             <tr>
@@ -308,7 +321,7 @@ const PlanningModule = ({ t, schedule, setSchedule, pointage, isGerant, currentU
     </div>
   );
 
-  const tabBtn = (key, label) => ({
+  const tabBtn = (key) => ({
     display: "flex", alignItems: "center", gap: 6, padding: "8px 16px", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, fontFamily: F, borderRadius: 8,
     background: planView === key ? t.primary : "transparent",
     color: planView === key ? "#fff" : t.textMuted,
