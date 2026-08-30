@@ -35,6 +35,10 @@ docs/ANALYSE-EXISTANT.md
 docs/PLAN-MIGRATION.md
 docs/AUDIT-SCHEMA-*.md
 docs/RAPPORT-PHASE0.md
+docs/RAPPORT-PHASE1.md
+supabase_migration8_phase1_couts.sql
+supabase_migration8b_correctif_trigger.sql
+supabase_migration8c_trigger_packaging.sql
 
 # Sauvegardes locales de données (contiennent les prix d'achat, dépôt public)
 .backups-produits/
@@ -51,3 +55,6 @@ import_recettes.mjs
 
 # Module Finances : données bancaires, jamais committé (dépôt public)
 supabase_migration6_finances.sql
+
+# Donnees Kimiko Phase 1 : prix d'achat et recettes (depot public)
+seed-kimiko/

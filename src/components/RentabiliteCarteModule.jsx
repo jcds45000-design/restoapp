@@ -152,10 +152,18 @@ export default function RentabiliteCarteModule({ t, products = [], productSuppli
         Recette {recettesById[item.recipe_id]?.nom} × {item.recipe_qty} · coût matière <b>{eur(cout)}</b> · prix de référence {eur(item.price)}
       </div>
 
-      {conseilCanaux.map(({ c, rc, equiv, prixSaisi }) => (
-        <div key={c.id} style={{ border: `1px solid ${t.border}`, borderRadius: 12, padding: 12, marginBottom: 9, background: t.surface }}>
+      {conseilCanaux.map(({ c, rc, equiv, prixSaisi }) => {
+        // Sans prix saisi sur un canal à commission, l'encaissement et la marge
+        // sont des hypothèses calculées sur le prix du comptoir : on le dit.
+        const herite = c.id !== 'sur_place' && !prixSaisi;
+        const flou = herite ? { color: t.textMuted, fontStyle: 'italic' } : {};
+        return (
+        <div key={c.id} style={{ border: `1px solid ${herite ? t.warning + '55' : t.border}`, borderRadius: 12, padding: 12, marginBottom: 9, background: t.surface }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 7 }}>
             <span style={{ fontWeight: 700, fontSize: 13, flex: 1 }}>{c.nom}</span>
+            {herite && (
+              <span style={{ fontSize: 10, fontWeight: 700, borderRadius: 999, padding: '2px 8px', background: t.warning + '20', color: t.warning }}>PRIX NON SAISI</span>
+            )}
             <span style={{ fontSize: 11, fontWeight: 700, borderRadius: 999, padding: '2px 8px', background: rc.commission > 0 ? '#eef2ff' : '#e5e7eb', color: rc.commission > 0 ? '#4338ca' : '#374151' }}>{rc.commission} % commission</span>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '3px 12px', fontSize: 12 }}>
@@ -166,14 +174,22 @@ export default function RentabiliteCarteModule({ t, products = [], productSuppli
                   onBlur={(e) => majPrixCanal(item.id, c.id, e.target.value)} style={{ width: 78, padding: 4, borderRadius: 6, border: `1px solid ${t.border}`, textAlign: 'right' }} />
               )}
             </span>
-            {rc.commission > 0 && (<><span style={{ color: t.textMuted }}>La plateforme prend</span><span style={{ textAlign: 'right' }}>− {eur(rc.prixTTC * rc.commission / 100)}</span></>)}
-            <span style={{ color: t.textMuted }}>Tu encaisses (HT)</span><span style={{ textAlign: 'right' }}>{eur(rc.prixEncaisseHT)}</span>
+            {rc.commission > 0 && (<><span style={{ color: t.textMuted }}>La plateforme prend</span><span style={{ textAlign: 'right', ...flou }}>− {eur(rc.prixTTC * rc.commission / 100)}</span></>)}
+            <span style={{ color: t.textMuted }}>Tu encaisses (HT)</span><span style={{ textAlign: 'right', ...flou }}>{eur(rc.prixEncaisseHT)}</span>
           </div>
           <div style={{ marginTop: 7, paddingTop: 7, borderTop: `1px dashed ${t.border}`, display: 'flex', alignItems: 'baseline', gap: 8 }}>
             <span style={{ color: t.textMuted, fontSize: 12 }}>Marge</span>
-            <b style={{ fontSize: 15 }}>{eur(rc.margeNette)}</b>
-            <span style={{ fontSize: 12, fontWeight: 700, borderRadius: 999, padding: '1px 8px', color: '#fff', background: coul(couleurMarge(rc.margeNettePct)) }}>{pct(rc.margeNettePct)}</span>
+            <b style={{ fontSize: 15, ...flou }}>{eur(rc.margeNette)}</b>
+            <span style={{ fontSize: 12, fontWeight: 700, borderRadius: 999, padding: '1px 8px', color: '#fff',
+              background: herite ? t.textMuted : coul(couleurMarge(rc.margeNettePct)) }}>{pct(rc.margeNettePct)}</span>
+            {herite && <span style={{ fontSize: 11, color: t.warning, fontWeight: 600 }}>estimation</span>}
           </div>
+          {herite && (
+            <div style={{ marginTop: 6, fontSize: 11, color: t.warning, background: t.warning + '12', borderRadius: 7, padding: '6px 9px', fontWeight: 600 }}>
+              Aucun prix saisi sur ce canal : les montants ci-dessus supposent le prix du comptoir ({eur(item.price)}).
+              Saisis ton vrai prix {c.nom} pour connaître ta marge réelle.
+            </div>
+          )}
           {rc.commission > 0 && equiv !== null && (
             <div style={{ marginTop: 6, fontSize: 12, color: '#3730a3', background: t.primary + '14', borderRadius: 7, padding: '6px 9px' }}>
               💡 Pour tenir ta marge du sur-place, vends-le <b>{eur(equiv)}</b>.
@@ -181,7 +197,8 @@ export default function RentabiliteCarteModule({ t, products = [], productSuppli
             </div>
           )}
         </div>
-      ))}
+        );
+      })}
 
       <Simulateur t={t} cout={cout || 0} settings={settings} />
     </div>
