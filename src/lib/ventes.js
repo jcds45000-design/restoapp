@@ -193,3 +193,36 @@ export function recapImport(ticketsNormalises, clesExistantes, mappings) {
     jours,
   };
 }
+
+// ─── Préparation de l'enregistrement en base ─────────────────────────────────
+// La caisse donne une heure locale sans fuseau (« 2026-09-22 11:31:09 ») :
+// interprétée dans le fuseau du navigateur, sinon Postgres la lirait en UTC.
+function instantSaisie(date) {
+  if (!date) return null;
+  const s = String(date);
+  if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2})?$/.test(s)) {
+    const d = new Date(s.replace(' ', 'T'));
+    return Number.isNaN(d.getTime()) ? s : d.toISOString();
+  }
+  return s;
+}
+
+// nouveaux : sortie de dedupTickets (déjà filtrée). Les ids des tickets sont
+// générés ici (genId) pour rattacher les lignes sans aller-retour en base.
+// Renvoie les lignes prêtes pour sales_tickets, sales_lines et, pour les
+// articles jamais vus, abill_item_mapping (en « à mapper » par défaut).
+export function preparerEnregistrement(nouveaux, { importId, mappings, genId }) {
+  const tickets = [];
+  const lignes = [];
+  for (const { ticket: tk, lignes: ls } of nouveaux) {
+    const id = genId();
+    const { brut, date_saisie, ...champs } = tk;
+    tickets.push({ ...champs, id, date_saisie: instantSaisie(date_saisie), import_id: importId, brut });
+    for (const l of ls) lignes.push({ ...l, ticket_id: id });
+  }
+  const connus = new Set((mappings || []).map((m) => m.abill_product_id));
+  const nouveauxArticles = articlesNonMappes(lignes, mappings)
+    .filter((a) => !connus.has(a.abill_product_id))
+    .map((a) => ({ abill_product_id: a.abill_product_id, libelle_abill: a.libelle }));
+  return { tickets, lignes, nouveauxArticles };
+}

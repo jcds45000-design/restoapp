@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { normaliserTicket, dedupTickets, resoudreMapping, articlesNonMappes, ventesParJour, quantitesVendues, recapImport } from './ventes.js';
+
+import { normaliserTicket, dedupTickets, resoudreMapping, articlesNonMappes, ventesParJour, quantitesVendues, recapImport, preparerEnregistrement } from './ventes.js';
 
 // Ticket au format de l'API Fulle (openapi v379, schéma NoteTicket).
 // Valeurs FICTIVES : aucun chiffre réel du restaurant ici (dépôt public).
@@ -169,5 +170,44 @@ describe('recapImport', () => {
     expect(r.total_ttc).toBeCloseTo(31.8, 5);
     expect(r.non_mappes).toHaveLength(1);
     expect(r.non_mappes[0].abill_product_id).toBe('777');
+  });
+});
+
+describe('preparerEnregistrement', () => {
+  const lot = [
+    normaliserTicket(ticketApi),
+    normaliserTicket({ ...ticketApi, id: 98002, details: [
+      { id: 9, id_product: 777, name: 'NOUVEAU PLAT', quantity: 1, total_ttc: '9.90' },
+      { id: 10, id_product: 888, name: 'AUTRE NOUVEAU', quantity: 1, total_ttc: '2.00' },
+    ] }),
+  ];
+  let n = 0;
+  const genId = () => `id-${++n}`;
+  const p = preparerEnregistrement(lot, { importId: 'imp-1', mappings, genId });
+
+  it('prépare les tickets aux colonnes de sales_tickets, rattachés à l’import', () => {
+    expect(p.tickets).toHaveLength(2);
+    expect(p.tickets[0]).toMatchObject({ id: 'id-1', abill_id: '98001', date_service: '2026-08-29',
+      canal: 'Uber Eats', total_ttc: 21.9, import_id: 'imp-1', n_lignes: 2, reverse: false });
+    expect(p.tickets[0].paiements).toEqual([{ mode: 'CB', montant: 21.9, quantite: 1 }]);
+    expect(p.tickets[0].brut).toBe(ticketApi);
+  });
+
+  it('convertit l’heure locale de caisse en instant absolu', () => {
+    expect(p.tickets[0].date_saisie).toBe(new Date('2026-08-29T12:31:05').toISOString());
+  });
+
+  it('prépare les lignes aux colonnes de sales_lines, rattachées à leur ticket', () => {
+    expect(p.lignes).toHaveLength(4);
+    expect(p.lignes.filter((l) => l.ticket_id === 'id-1')).toHaveLength(2);
+    expect(p.lignes[0]).toMatchObject({ abill_product_id: '501', libelle: 'MENU BONELESS X10', quantity: 1,
+      total_ttc: 15.9, remise_pct: 0, offert: false, exclu_ca: false });
+    expect(Object.keys(p.lignes[0]).sort()).toEqual(['abill_line_id', 'abill_product_id', 'exclu_ca', 'libelle',
+      'offert', 'options', 'quantity', 'remise_pct', 'ticket_id', 'total_ht', 'total_ttc', 'tva', 'unit_ht', 'unit_ttc']);
+  });
+
+  it('ne crée à mapper que les articles absents du mapping', () => {
+    // 777 existe déjà (a_mapper) : pas de doublon ; 888 est nouveau.
+    expect(p.nouveauxArticles).toEqual([{ abill_product_id: '888', libelle_abill: 'AUTRE NOUVEAU' }]);
   });
 });
