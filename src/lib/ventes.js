@@ -122,6 +122,37 @@ export function articlesNonMappes(lignes, mappings) {
   return [...parId.values()].sort((a, b) => b.occurrences - a.occurrences);
 }
 
+// ─── Liste de mapping : valeur de <select> ↔ champs en base ─────────────────
+// « mi:<id> » = article de carte, « rc:<id> » = recette portion (options de
+// menu : frites, sauce, boisson…), « __ignorer », « » = à mapper.
+export function valeurMapping(m) {
+  if (!m || m.cible_type === 'a_mapper') return '';
+  if (m.cible_type === 'ignorer') return '__ignorer';
+  if (m.menu_item_id) return `mi:${m.menu_item_id}`;
+  if (m.recipe_id) return `rc:${m.recipe_id}`;
+  return '';
+}
+
+export function champsMapping(valeur, menuItems, recettes) {
+  if (valeur === '__ignorer') return { cible_type: 'ignorer', menu_item_id: null, recipe_id: null };
+  if (!valeur) return { cible_type: 'a_mapper', menu_item_id: null, recipe_id: null };
+  if (valeur.startsWith('mi:')) {
+    const mi = (menuItems || []).find((x) => x.id === valeur.slice(3));
+    if (!mi) return null;
+    return {
+      cible_type: mi.category === 'Menus' ? 'menu' : (mi.recipe_id ? 'recette' : 'produit'),
+      menu_item_id: mi.id,
+      recipe_id: mi.recipe_id || null,
+    };
+  }
+  if (valeur.startsWith('rc:')) {
+    const r = (recettes || []).find((x) => x.id === valeur.slice(3));
+    if (!r) return null;
+    return { cible_type: 'recette', menu_item_id: null, recipe_id: r.id };
+  }
+  return null;
+}
+
 // ─── Agrégats de ventes ──────────────────────────────────────────────────────
 // tickets/lignes : déjà normalisés (ou relus en base, mêmes champs).
 // Les extournes (reverse) et lignes exclues du CA sont écartées des totaux.

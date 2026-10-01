@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 
-import { normaliserTicket, dedupTickets, resoudreMapping, articlesNonMappes, ventesParJour, quantitesVendues, recapImport, preparerEnregistrement } from './ventes.js';
+import { normaliserTicket, dedupTickets, resoudreMapping, articlesNonMappes, ventesParJour, quantitesVendues, recapImport, preparerEnregistrement, valeurMapping, champsMapping } from './ventes.js';
 
 // Ticket au format de l'API Fulle (openapi v379, schéma NoteTicket).
 // Valeurs FICTIVES : aucun chiffre réel du restaurant ici (dépôt public).
@@ -209,5 +209,44 @@ describe('preparerEnregistrement', () => {
   it('ne crée à mapper que les articles absents du mapping', () => {
     // 777 existe déjà (a_mapper) : pas de doublon ; 888 est nouveau.
     expect(p.nouveauxArticles).toEqual([{ abill_product_id: '888', libelle_abill: 'AUTRE NOUVEAU' }]);
+  });
+});
+
+describe('valeurMapping / champsMapping', () => {
+  const menuItems = [
+    { id: 'mi1', name: 'Boneless x10', category: 'Poulet frit', recipe_id: 'r1' },
+    { id: 'mi2', name: 'Menu corndog', category: 'Menus', recipe_id: null },
+    { id: 'mi3', name: 'Coca', category: 'Boissons', recipe_id: null },
+  ];
+  const recettes = [{ id: 'rc1', nom: 'Portion frites', rendement_unite: 'portion' }];
+
+  it('valeurMapping encode la cible courante', () => {
+    expect(valeurMapping({ cible_type: 'a_mapper' })).toBe('');
+    expect(valeurMapping({ cible_type: 'ignorer' })).toBe('__ignorer');
+    expect(valeurMapping({ cible_type: 'recette', menu_item_id: 'mi1', recipe_id: 'r1' })).toBe('mi:mi1');
+    expect(valeurMapping({ cible_type: 'recette', menu_item_id: null, recipe_id: 'rc1' })).toBe('rc:rc1');
+  });
+
+  it('champsMapping : article de carte (recopie la recette)', () => {
+    expect(champsMapping('mi:mi1', menuItems, recettes))
+      .toEqual({ cible_type: 'recette', menu_item_id: 'mi1', recipe_id: 'r1' });
+    expect(champsMapping('mi:mi2', menuItems, recettes))
+      .toEqual({ cible_type: 'menu', menu_item_id: 'mi2', recipe_id: null });
+    expect(champsMapping('mi:mi3', menuItems, recettes))
+      .toEqual({ cible_type: 'produit', menu_item_id: 'mi3', recipe_id: null });
+  });
+
+  it('champsMapping : recette portion, ignorer, remise à mapper', () => {
+    expect(champsMapping('rc:rc1', menuItems, recettes))
+      .toEqual({ cible_type: 'recette', menu_item_id: null, recipe_id: 'rc1' });
+    expect(champsMapping('__ignorer', menuItems, recettes))
+      .toEqual({ cible_type: 'ignorer', menu_item_id: null, recipe_id: null });
+    expect(champsMapping('', menuItems, recettes))
+      .toEqual({ cible_type: 'a_mapper', menu_item_id: null, recipe_id: null });
+  });
+
+  it('champsMapping renvoie null pour une cible inconnue', () => {
+    expect(champsMapping('mi:absent', menuItems, recettes)).toBeNull();
+    expect(champsMapping('rc:absent', menuItems, recettes)).toBeNull();
   });
 });
