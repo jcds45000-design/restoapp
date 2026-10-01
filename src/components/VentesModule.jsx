@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { normaliserTicket, recapImport, dedupTickets, preparerEnregistrement } from '../lib/ventes';
+import { normaliserTicket, recapImport, dedupTickets, preparerEnregistrement, valeurMapping, champsMapping } from '../lib/ventes';
 import { ticketsDepuisExportTickets } from '../lib/ventesExportTickets';
 
 // ============================================================================
@@ -244,7 +244,7 @@ function Carte({ children, t, style }) {
 }
 
 // Une ligne de mapping : l'article Abill à gauche, la cible à droite.
-function LigneMapping({ m, menuItems, t, onChoisir }) {
+function LigneMapping({ m, menuItems, recettesPortion, t, onChoisir }) {
   const aMapper = m.cible_type === 'a_mapper';
   const ignore = m.cible_type === 'ignorer';
   return (
@@ -261,15 +261,22 @@ function LigneMapping({ m, menuItems, t, onChoisir }) {
         </div>
       </div>
       <select
-        value={ignore ? '__ignorer' : (m.menu_item_id || '')}
+        value={valeurMapping(m)}
         onChange={(e) => onChoisir(m, e.target.value)}
         style={{ flex: '1 1 240px', maxWidth: 320, padding: '8px 10px', borderRadius: 8, fontSize: 13,
           border: `1px solid ${aMapper ? t.danger + '88' : t.border}`, background: t.surface, color: t.text }}>
         <option value="">— À mapper —</option>
         <option value="__ignorer">Ignorer (hors ventes : pourboire, divers…)</option>
-        {menuItems.map((mi) => (
-          <option key={mi.id} value={mi.id}>{mi.name}{mi.category ? ` (${mi.category})` : ''}</option>
-        ))}
+        <optgroup label="Article de la carte">
+          {menuItems.map((mi) => (
+            <option key={mi.id} value={`mi:${mi.id}`}>{mi.name}{mi.category ? ` (${mi.category})` : ''}</option>
+          ))}
+        </optgroup>
+        <optgroup label="Recette portion (options de menu : frites, sauce, boisson…)">
+          {recettesPortion.map((r) => (
+            <option key={r.id} value={`rc:${r.id}`}>{r.nom}</option>
+          ))}
+        </optgroup>
       </select>
     </div>
   );
@@ -278,6 +285,7 @@ function LigneMapping({ m, menuItems, t, onChoisir }) {
 export default function VentesModule({ t }) {
   const [mappings, setMappings] = useState([]);
   const [menuItems, setMenuItems] = useState([]);
+  const [recettesPortion, setRecettesPortion] = useState([]);
   const [imports, setImports] = useState([]);
   const [chargement, setChargement] = useState(true);
   const [erreur, setErreur] = useState('');
@@ -288,14 +296,20 @@ export default function VentesModule({ t }) {
   const [info, setInfo] = useState('');
 
   const charger = async () => {
-    const [mp, mi, im] = await Promise.all([
+    const [mp, mi, im, rc] = await Promise.all([
       supabase.from('abill_item_mapping').select('*').order('updated_at', { ascending: false }),
       supabase.from('menu_items').select('id,name,category,recipe_id').order('name'),
       supabase.from('sales_imports').select('*').order('created_at', { ascending: false }).limit(50),
+      // Seules les recettes servies à l'unité sont des cibles valables : une
+      // sous-recette au gramme (Riz blanc cuit) donnerait un coût au gramme, et
+      // une préparation de fond (Marinade, Pâte à corn dog) le coût d'un batch.
+      supabase.from('recipes').select('id,nom,rendement_unite').in('rendement_unite', ['portion', 'piece'])
+        .eq('sous_recette_seulement', false).order('nom'),
     ]);
-    const err = mp.error || mi.error || im.error;
+    const err = mp.error || mi.error || im.error || rc.error;
     if (err) { setErreur(err.message); setChargement(false); return; }
     setMappings(mp.data || []); setMenuItems(mi.data || []); setImports(im.data || []);
+    setRecettesPortion(rc.data || []);
     setChargement(false);
   };
 
@@ -320,24 +334,12 @@ export default function VentesModule({ t }) {
     return [...liste].sort((a, b) => (a.cible_type === 'a_mapper' ? 0 : 1) - (b.cible_type === 'a_mapper' ? 0 : 1));
   }, [mappings, filtre]);
 
-  // Choix d'une cible : l'article de carte porte déjà sa recette, on recopie
-  // recipe_id pour que le moteur ventes n'ait pas à re-joindre menu_items.
+  // Choix d'une cible : champsMapping traduit la valeur de la liste en champs
+  // (un article de carte recopie sa recette, une recette portion est visée seule).
   const choisir = async (m, valeur) => {
     setInfo('');
-    let champs;
-    if (valeur === '__ignorer') {
-      champs = { cible_type: 'ignorer', menu_item_id: null, recipe_id: null };
-    } else if (valeur === '') {
-      champs = { cible_type: 'a_mapper', menu_item_id: null, recipe_id: null };
-    } else {
-      const mi = menuItems.find((x) => x.id === valeur);
-      if (!mi) return;
-      champs = {
-        cible_type: mi.category === 'Menus' ? 'menu' : (mi.recipe_id ? 'recette' : 'produit'),
-        menu_item_id: mi.id,
-        recipe_id: mi.recipe_id || null,
-      };
-    }
+    const champs = champsMapping(valeur, menuItems, recettesPortion);
+    if (!champs) return;
     const { error } = await supabase.from('abill_item_mapping')
       .update({ ...champs, updated_at: new Date().toISOString() }).eq('id', m.id);
     if (error) { setErreur(error.message); return; }
@@ -387,9 +389,11 @@ export default function VentesModule({ t }) {
         <>
           <Carte t={t} style={{ marginBottom: 14 }}>
             <div style={{ fontSize: 13, color: t.textMuted, lineHeight: 1.5 }}>
-              Chaque article vendu chez Abill (caisse, Uber Eats, Deliveroo, site) doit pointer vers un article
-              de la carte pour que les ventes alimentent les coûts, les marges et bientôt le stock.
-              Les articles inconnus détectés à l’import arriveront ici tout seuls, marqués « à mapper ».
+              Chaque article vendu chez Abill doit pointer vers un article de la carte, pour que les ventes
+              alimentent les coûts et les marges. Les options incluses dans les menus (frites, sauces, boissons,
+              goûts du poulet), vendues à 0 €, pointent vers une recette « portion » : leur coût matière est
+              compté, sans chiffre d’affaires. Les articles inconnus détectés à l’import arrivent ici tout seuls,
+              marqués « à mapper ».
             </div>
           </Carte>
 
@@ -421,7 +425,7 @@ export default function VentesModule({ t }) {
               </div>
             )}
             {visibles.map((m) => (
-              <LigneMapping key={m.id} m={m} menuItems={menuItems} t={t} onChoisir={choisir} />
+              <LigneMapping key={m.id} m={m} menuItems={menuItems} recettesPortion={recettesPortion} t={t} onChoisir={choisir} />
             ))}
           </Carte>
         </>
