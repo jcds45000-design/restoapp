@@ -130,7 +130,8 @@ function ImportFichier({ t, mappings, onTermine }) {
   const r = analyse?.recap;
   const nbErreurs = r ? r.nb_erreurs + analyse.erreursLecture.length : 0;
   const bouton = (actif) => ({ padding: '9px 18px', borderRadius: 8, border: 'none', fontWeight: 600, fontSize: 13,
-    cursor: actif ? 'pointer' : 'not-allowed', background: actif ? t.primary : t.border, color: '#fff' });
+    cursor: actif ? 'pointer' : 'not-allowed', background: actif ? t.primary : t.surface,
+    color: actif ? '#fff' : t.textMuted, outline: actif ? 'none' : `1px dashed ${t.border}` });
 
   return (
     <Carte t={t} style={{ marginBottom: 14 }}>
@@ -252,9 +253,11 @@ function LigneMapping({ m, menuItems, t, onChoisir }) {
       <div style={{ flex: '1 1 220px', minWidth: 180 }}>
         <div style={{ fontWeight: 600, color: t.text, fontSize: 14 }}>{m.libelle_abill || '(libellé inconnu)'}</div>
         <div style={{ fontSize: 12, color: t.textMuted }}>
-          id Abill : {m.abill_product_id}
-          {aMapper && <span style={{ marginLeft: 8, color: t.danger, fontWeight: 700 }}>à mapper</span>}
-          {ignore && <span style={{ marginLeft: 8, color: t.textMuted, fontWeight: 700 }}>ignoré</span>}
+          {!String(m.abill_product_id).startsWith('lib:') && (
+            <span style={{ marginRight: 8 }}>Réf. caisse : {m.abill_product_id}</span>
+          )}
+          {aMapper && <span style={{ color: t.danger, fontWeight: 700 }}>à mapper</span>}
+          {ignore && <span style={{ fontWeight: 700 }}>ignoré</span>}
         </div>
       </div>
       <select
