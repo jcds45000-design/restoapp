@@ -103,4 +103,65 @@ describe('qualiteHeures', () => {
     ]);
     expect(r.tauxFiabilite).toBe(50);
   });
+
+  it('une clôture automatique est une anomalie même si le statut est complete et la fin renseignée', () => {
+    const r = qualiteHeures([
+      { debut: '2026-09-22T09:00:00.000Z', fin: '2026-09-22T23:00:00.000Z',
+        debut_origine: 'borne', fin_origine: 'cloture_auto', statut: 'complete' },
+    ]);
+    expect(r.anomalies).toBe(1);
+    expect(r.minutesTotales).toBe(0);
+  });
+
+  it('une liste vide donne des zéros', () => {
+    expect(qualiteHeures([])).toEqual({
+      minutesPointees: 0, minutesDeclarees: 0, anomalies: 0, enCours: 0,
+      minutesTotales: 0, tauxFiabilite: 0,
+    });
+  });
+
+  it('une fin antérieure au début est une anomalie, elle ne disparaît pas', () => {
+    const r = qualiteHeures([
+      { debut: '2026-09-22T20:00:00.000Z', fin: '2026-09-22T10:30:00.000Z',
+        debut_origine: 'borne', fin_origine: 'correction', statut: 'complete' },
+    ]);
+    expect(r.anomalies).toBe(1);
+    expect(r.minutesTotales).toBe(0);
+  });
+
+  it('une fin égale au début ou une date invalide est une anomalie', () => {
+    const r = qualiteHeures([
+      p('2026-09-22T09:00:00.000Z', '2026-09-22T09:00:00.000Z'),
+      p('abc', '2026-09-22T09:00:00.000Z'),
+      p('2026-09-22T09:00:00.000Z', 'abc'),
+    ]);
+    expect(r.anomalies).toBe(3);
+  });
+
+  it('une présence ouverte sans fin est en cours, ni anomalie ni minute', () => {
+    const r = qualiteHeures([
+      { debut: '2026-09-22T09:00:00.000Z', fin: null,
+        debut_origine: 'borne', fin_origine: null, statut: 'ouverte' },
+    ]);
+    expect(r.enCours).toBe(1);
+    expect(r.anomalies).toBe(0);
+    expect(r.minutesTotales).toBe(0);
+  });
+
+  it('une présence complete sans fin reste une anomalie', () => {
+    const r = qualiteHeures([
+      { debut: '2026-09-22T09:00:00.000Z', fin: null,
+        debut_origine: 'borne', fin_origine: null, statut: 'complete' },
+    ]);
+    expect(r.anomalies).toBe(1);
+    expect(r.enCours).toBe(0);
+  });
+
+  it('une présence corrigée n’est jamais pointée, même borne/borne', () => {
+    const r = qualiteHeures([
+      { ...p('2026-09-22T09:00:00.000Z', '2026-09-22T11:00:00.000Z'), corrigee: true },
+    ]);
+    expect(r.minutesPointees).toBe(0);
+    expect(r.minutesDeclarees).toBe(120);
+  });
 });

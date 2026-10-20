@@ -18,7 +18,8 @@ export function jourDeRattachement(debutISO) {
   }).format(d);
 }
 
-// Minutes entières, arrondies à la minute la plus proche pour chaque présence (les horodatages restent exacts en base, spec §6.6). Une présence sans fin vaut 0 :
+// Minutes entières, arrondies à la minute la plus proche pour chaque présence
+// (les horodatages restent exacts en base, spec §6.6). Une présence sans fin vaut 0 :
 // on ne devine pas une heure de départ, on la déclare en anomalie (spec §6.7).
 export function dureeMinutes(presence) {
   if (!presence?.debut || !presence?.fin) return 0;
@@ -30,14 +31,26 @@ export function dureeMinutes(presence) {
 // Une présence n'est « mesurée » que si ses DEUX bouts ont été pointés sur la borne
 // au moment où ça se passait. Tout le reste est du déclaratif : croyable, invérifiable.
 export function estMesuree(presence) {
-  return presence?.debut_origine === 'borne' && presence?.fin_origine === 'borne';
+  return presence?.debut_origine === 'borne' && presence?.fin_origine === 'borne'
+    && !presence?.corrigee;
 }
 
 // Une anomalie ne vaut AUCUNE minute : ni estimée, ni complétée depuis le planning
 // (spec §3). C'est ce qui empêche le système de produire un total propre et faux.
 export function estAnomalie(presence) {
-  return presence?.statut === 'anomalie' || !presence?.fin
-    || presence?.fin_origine === 'cloture_auto';
+  // Une présence en cours (salarié en poste) n'est pas une anomalie (spec §4.2).
+  if (estEnCours(presence)) return false;
+  if (!presence?.fin) return true;
+  if (presence.statut === 'anomalie' || presence.fin_origine === 'cloture_auto') return true;
+  // Une fin absente de sens (invalide, égale ou antérieure au début) ne doit pas
+  // disparaître en silence : elle est signalée.
+  const debut = new Date(presence.debut).getTime();
+  const fin = new Date(presence.fin).getTime();
+  return !(Number.isFinite(debut) && Number.isFinite(fin) && fin > debut);
+}
+
+export function estEnCours(presence) {
+  return presence?.statut === 'ouverte' && !presence?.fin;
 }
 
 // Sépare ce qui a été mesuré de ce qui a été déclaré, et compte les trous.
@@ -46,8 +59,10 @@ export function qualiteHeures(presences = []) {
   let minutesPointees = 0;
   let minutesDeclarees = 0;
   let anomalies = 0;
+  let enCours = 0;
 
   for (const presence of presences) {
+    if (estEnCours(presence)) { enCours += 1; continue; }
     if (estAnomalie(presence)) { anomalies += 1; continue; }
     const minutes = dureeMinutes(presence);
     if (estMesuree(presence)) minutesPointees += minutes;
@@ -59,6 +74,8 @@ export function qualiteHeures(presences = []) {
     minutesPointees,
     minutesDeclarees,
     anomalies,
+    enCours,
+    // Somme pointées + déclarées : sert aux seuils hebdomadaires et au taux. Ne JAMAIS l'afficher seule dans le récap (spec §5.3).
     minutesTotales,
     // Part réellement mesurée du total. Un taux bas veut dire que le chiffre ne vaut rien,
     // et c'est une information aussi importante que le chiffre lui-même.
