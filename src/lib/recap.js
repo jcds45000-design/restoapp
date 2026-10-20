@@ -81,6 +81,36 @@ function grouperPar(liste, cle) {
   return groupes;
 }
 
+const JOUR_MS = 24 * 3600 * 1000;
+const iso = (d) => d.toISOString().slice(0, 10);
+
+// Clés ISO de TOUTES les semaines civiles rattachées à ce mois, qu'il y ait eu des
+// présences ou non. On parcourt les lundis, du lundi qui précède le 1er jusqu'au dernier
+// jour du mois, et on garde ceux que `moisDeRattachement` rattache au mois : strictement
+// la même règle que le filtre des présences.
+export function semainesDuMois(mois, regleSemaine = 'mois_fin') {
+  return lundisDuMois(mois, regleSemaine).map((lundi) => cleSemaine(lundi));
+}
+
+function lundisDuMois(mois, regleSemaine) {
+  if (typeof mois !== 'string' || !/^\d{4}-\d{2}$/.test(mois) || !dateValide(`${mois}-01`)) {
+    throw new Error('semainesDuMois : mois invalide : ' + mois);
+  }
+  const premier = dateValide(`${mois}-01`);
+  const dernier = new Date(Date.UTC(premier.getUTCFullYear(), premier.getUTCMonth() + 1, 0, 12));
+  const lundi = new Date(premier.getTime() - ((premier.getUTCDay() + 6) % 7) * JOUR_MS);
+  const lundis = [];
+  for (let d = lundi; d <= dernier; d = new Date(d.getTime() + 7 * JOUR_MS)) {
+    if (moisDeRattachement(iso(d), regleSemaine) === mois) lundis.push(iso(d));
+  }
+  return lundis;
+}
+
+// Valide le contrat avec les mêmes règles que heuresSupplementaires (0 accepté).
+function contratValide(v) {
+  return v !== null && v !== undefined && v !== '' && Number.isFinite(Number(v)) && Number(v) >= 0;
+}
+
 const enHeures = (minutes) => Math.round((minutes / 60) * 100) / 100;
 
 // Récap d'un salarié pour un mois (format 'AAAA-MM'), prêt pour le comptable.
@@ -91,6 +121,10 @@ const enHeures = (minutes) => Math.round((minutes / 60) * 100) / 100;
 export function recapMensuel({
   salarie, presences = [], mois, creneaux, regleSemaine = 'mois_fin',
 }) {
+  if (!contratValide(salarie?.heures_hebdo)) {
+    throw new Error('contrat manquant ou invalide pour '
+      + (salarie?.name || salarie?.id) + ' : ' + salarie?.heures_hebdo);
+  }
   const duMois = presences
     .filter((p) => p.employee_id === salarie.id
       && moisDeRattachement(p.jour, regleSemaine) === mois)
@@ -121,6 +155,20 @@ export function recapMensuel({
   });
 
   const heuresTotales = enHeures(qualite.minutesTotales);
+
+  // Contrat du mois = semaines CIVILES du mois, pas seulement celles où le salarié a pointé,
+  // sinon une absence réduirait le contrat et masquerait l'écart.
+  // Semaine partielle (entrée ou sortie en cours de semaine) comptée entière : à confirmer avec le comptable.
+  const semainesContrat = lundisDuMois(mois, regleSemaine).filter((lundi) => {
+    const dimanche = iso(new Date(dateValide(lundi).getTime() + 6 * JOUR_MS));
+    if (salarie.date_entree && dimanche < salarie.date_entree) return false;
+    if (salarie.date_fin && lundi > salarie.date_fin) return false;
+    return true;
+  });
+  const heuresContractuellesMois = enHeures(
+    Number(salarie.heures_hebdo) * semainesContrat.length * 60,
+  );
+
   return {
     salarie,
     mois,
@@ -134,8 +182,8 @@ export function recapMensuel({
     anomalies: duMois.filter(estAnomalie),
     // Écart au CONTRAT, pas au planning : le planning n'est pas tenu à l'avance,
     // le comptable ne doit pas voir d'écarts imaginaires (spec §6, décision).
-    heuresContractuellesMois: enHeures(
-      (Number(salarie.heures_hebdo) || 0) * semaines.length * 60,
-    ),
+    heuresContractuellesMois,
+    // Lot 1 : l'écart inclut les absences justifiées (congés, arrêts), que le lot 1 ne connaît pas (spec §2).
+    ecartContratHeures: Math.round((heuresTotales - heuresContractuellesMois) * 100) / 100,
   };
 }

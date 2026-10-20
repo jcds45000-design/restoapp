@@ -1,7 +1,7 @@
 // src/lib/recap.test.js
 import { describe, it, expect } from 'vitest';
 import {
-  cleSemaine, moisDeRattachement, heuresSupplementaires, recapMensuel,
+  cleSemaine, moisDeRattachement, heuresSupplementaires, recapMensuel, semainesDuMois,
 } from './recap.js';
 
 describe('cleSemaine', () => {
@@ -191,19 +191,41 @@ describe('recapMensuel', () => {
     expect(septembre.heuresTotales).toBe(20);
   });
 
-  it('aucune heure ne disparaît ni n’est comptée deux fois sur douze mois', () => {
-    // Garde-fou : la somme des récaps doit égaler le total des présences.
+  it('garde-fou : 400 jours consécutifs, aucune minute perdue ni doublée, pour les deux règles', () => {
+    // Traverse le passage d'année 2026/2027 (semaine W53 incluse).
     const presences = [];
-    for (let jour = 1; jour <= 28; jour += 1) {
-      const j = `2026-09-${String(jour).padStart(2, '0')}`;
-      presences.push(pres(j, '09:00', '12:00')); // 3 h par jour
+    const debut = new Date('2026-06-01T12:00:00.000Z');
+    for (let i = 0; i < 400; i += 1) {
+      const d = new Date(debut);
+      d.setUTCDate(d.getUTCDate() + i);
+      presences.push(pres(d.toISOString().slice(0, 10), '09:00', '12:20')); // 200 min
     }
-    const total = ['2026-08', '2026-09', '2026-10']
-      .map((m) => recapMensuel({
-        salarie: SALARIE, presences, mois: m, creneaux: CRENEAUX, regleSemaine: 'mois_fin',
-      }).heuresTotales)
-      .reduce((a, b) => a + b, 0);
-    expect(total).toBe(28 * 3);
+    const mois = [];
+    for (let a = 2026, m = 5; a < 2027 || m <= 8; m += 1) {
+      if (m > 12) { m = 1; a += 1; }
+      if (a === 2027 && m > 8) break;
+      mois.push(`${a}-${String(m).padStart(2, '0')}`);
+    }
+    for (const regleSemaine of ['mois_fin', 'mois_debut']) {
+      const total = mois
+        .map((m) => recapMensuel({
+          salarie: SALARIE, presences, mois: m, creneaux: CRENEAUX, regleSemaine,
+        }).qualite.minutesTotales)
+        .reduce((x, y) => x + y, 0);
+      expect(total).toBe(400 * 200);
+    }
+  });
+
+  it('valide le contrat dès l’entrée, même sans présence', () => {
+    expect(() => recapMensuel({
+      salarie: { id: 'emp-a', name: 'Salarié A' }, presences: [], mois: '2026-10', creneaux: CRENEAUX,
+    })).toThrow('contrat manquant ou invalide pour Salarié A : undefined');
+    expect(() => recapMensuel({
+      salarie: { ...SALARIE, heures_hebdo: -1 }, presences: [], mois: '2026-10', creneaux: CRENEAUX,
+    })).toThrow(/contrat manquant ou invalide/);
+    expect(() => recapMensuel({
+      salarie: { ...SALARIE, heures_hebdo: 0 }, presences: [], mois: '2026-10', creneaux: CRENEAUX,
+    })).not.toThrow();
   });
 
   it('un mois sans aucune présence ne plante pas et rend des zéros', () => {
@@ -211,5 +233,50 @@ describe('recapMensuel', () => {
     expect(r.heuresTotales).toBe(0);
     expect(r.repas.total).toBe(0);
     expect(r.semaines).toEqual([]);
+  });
+});
+
+describe('semainesDuMois', () => {
+  it('octobre 2026 en mois_fin : W40 (28/09 au 04/10) à W43 (19/10 au 25/10)', () => {
+    expect(semainesDuMois('2026-10', 'mois_fin'))
+      .toEqual(['2026-W40', '2026-W41', '2026-W42', '2026-W43']);
+  });
+  it('octobre 2026 en mois_debut : W41 (05/10) à W44 (26/10), W40 part en septembre', () => {
+    expect(semainesDuMois('2026-10', 'mois_debut'))
+      .toEqual(['2026-W41', '2026-W42', '2026-W43', '2026-W44']);
+  });
+  it('novembre 2026 en mois_fin commence à W44 (26/10 au 01/11, finit en novembre)', () => {
+    expect(semainesDuMois('2026-11', 'mois_fin')[0]).toBe('2026-W44');
+  });
+});
+
+describe('recapMensuel : contrat du mois', () => {
+  it('contrat sur le calendrier : une seule semaine pointée donne un écart négatif', () => {
+    const r = recapMensuel({
+      salarie: SALARIE, presences: [pres('2026-10-14', '09:00', '19:00')],
+      mois: '2026-10', creneaux: CRENEAUX,
+    });
+    expect(r.heuresContractuellesMois).toBe(24 * 4);
+    expect(r.ecartContratHeures).toBe(10 - 96);
+  });
+  it('mois sans présence : contrat plein, zéro heure', () => {
+    const r = recapMensuel({ salarie: SALARIE, presences: [], mois: '2026-10', creneaux: CRENEAUX });
+    expect(r.heuresContractuellesMois).toBe(96);
+    expect(r.heuresTotales).toBe(0);
+    expect(r.ecartContratHeures).toBe(-96);
+  });
+  it('date_entree au 20/10 : seule W43 compte (W44 appartient à novembre)', () => {
+    const r = recapMensuel({
+      salarie: { ...SALARIE, date_entree: '2026-10-20' }, presences: [],
+      mois: '2026-10', creneaux: CRENEAUX,
+    });
+    expect(r.heuresContractuellesMois).toBe(24); // W43 seule
+  });
+  it('date_fin au 07/10 : les semaines après W41 sont exclues', () => {
+    const r = recapMensuel({
+      salarie: { ...SALARIE, date_fin: '2026-10-07' }, presences: [],
+      mois: '2026-10', creneaux: CRENEAUX,
+    });
+    expect(r.heuresContractuellesMois).toBe(24 * 2); // W40 et W41
   });
 });
