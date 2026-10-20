@@ -8,14 +8,17 @@ const FUSEAU = 'Europe/Paris';
 // Le jour de rattachement est TOUJOURS celui du début : un service qui finit à 00h30
 // est une seule journée de travail, pas deux (spec §6.5).
 export function jourDeRattachement(debutISO) {
-  const d = new Date(debutISO);
+  const d = debutISO ? new Date(debutISO) : null;
+  if (!d || Number.isNaN(d.getTime())) {
+    throw new Error('jourDeRattachement : date de début invalide');
+  }
   // en-CA donne directement le format AAAA-MM-JJ
   return new Intl.DateTimeFormat('en-CA', {
     timeZone: FUSEAU, year: 'numeric', month: '2-digit', day: '2-digit',
   }).format(d);
 }
 
-// Minutes exactes, jamais arrondies (spec §6.6). Une présence sans fin vaut 0 :
+// Minutes entières, arrondies à la minute la plus proche pour chaque présence (les horodatages restent exacts en base, spec §6.6). Une présence sans fin vaut 0 :
 // on ne devine pas une heure de départ, on la déclare en anomalie (spec §6.7).
 export function dureeMinutes(presence) {
   if (!presence?.debut || !presence?.fin) return 0;
