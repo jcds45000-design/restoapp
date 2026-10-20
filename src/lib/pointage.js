@@ -83,3 +83,48 @@ export function qualiteHeures(presences = []) {
       : Math.round((minutesPointees / minutesTotales) * 100),
   };
 }
+
+// Minutes écoulées depuis minuit, en heure de Paris, pour un instant ISO donné.
+function minutesLocales(iso) {
+  const parties = new Intl.DateTimeFormat('fr-FR', {
+    timeZone: FUSEAU, hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  }).formatToParts(new Date(iso));
+  const h = Number(parties.find((p) => p.type === 'hour').value);
+  const m = Number(parties.find((p) => p.type === 'minute').value);
+  return h * 60 + m;
+}
+
+function enMinutes(hhmm) {
+  const [h, m] = hhmm.split(':').map(Number);
+  return h * 60 + m;
+}
+
+// Chevauchement STRICT : partir à 11h30 pile quand le service commence à 11h30
+// ne donne pas droit à un repas.
+function chevauche(presence, debutCreneau, finCreneau) {
+  const debut = minutesLocales(presence.debut);
+  let fin = minutesLocales(presence.fin);
+  // Service qui déborde sur le lendemain : on prolonge au-delà de minuit.
+  if (fin <= debut) fin += 24 * 60;
+  return debut < finCreneau && fin > debutCreneau;
+}
+
+// Un repas par service effectivement travaillé, quel que soit le nombre de présences
+// (spec §6.4). La coupure produit deux présences et deux repas, la journée continue
+// produit une présence et deux repas.
+export function repasDuJour(presencesDuJour = [], creneaux) {
+  const midiDebut = enMinutes(creneaux.midiDebut);
+  const midiFin = enMinutes(creneaux.midiFin);
+  const soirDebut = enMinutes(creneaux.soirDebut);
+  const soirFin = enMinutes(creneaux.soirFin);
+
+  let midi = 0;
+  let soir = 0;
+  for (const presence of presencesDuJour) {
+    // Anomalie ou présence en cours : pas de fin connue, donc pas de repas deviné.
+    if (estAnomalie(presence) || estEnCours(presence)) continue;
+    if (chevauche(presence, midiDebut, midiFin)) midi = 1;
+    if (chevauche(presence, soirDebut, soirFin)) soir = 1;
+  }
+  return { midi, soir, total: midi + soir };
+}

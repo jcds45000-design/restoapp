@@ -1,6 +1,6 @@
 // src/lib/pointage.test.js
 import { describe, it, expect } from 'vitest';
-import { jourDeRattachement, dureeMinutes, qualiteHeures } from './pointage.js';
+import { jourDeRattachement, dureeMinutes, qualiteHeures, repasDuJour } from './pointage.js';
 
 describe('jourDeRattachement', () => {
   it('rattache la présence au jour de son DÉBUT, même si elle finit après minuit', () => {
@@ -163,5 +163,57 @@ describe('qualiteHeures', () => {
     ]);
     expect(r.minutesPointees).toBe(0);
     expect(r.minutesDeclarees).toBe(120);
+  });
+});
+
+// Créneaux par défaut, en heure locale de Paris.
+const CRENEAUX = { midiDebut: '11:30', midiFin: '14:30', soirDebut: '18:30', soirFin: '22:00' };
+
+// Helper : construit une présence à partir d'heures LOCALES de Paris (UTC+2 en septembre).
+const pLocale = (jour, hDebut, hFin) => ({
+  jour,
+  debut: `${jour}T${String(Number(hDebut.slice(0, 2)) - 2).padStart(2, '0')}${hDebut.slice(2)}:00.000Z`,
+  fin: hFin === null ? null
+    : `${jour}T${String(Number(hFin.slice(0, 2)) - 2).padStart(2, '0')}${hFin.slice(2)}:00.000Z`,
+  debut_origine: 'borne', fin_origine: hFin === null ? null : 'borne',
+  statut: hFin === null ? 'anomalie' : 'complete',
+});
+
+describe('repasDuJour', () => {
+  it('service du midi seul = 1 repas', () => {
+    const r = repasDuJour([pLocale('2026-09-22', '11:30', '14:30')], CRENEAUX);
+    expect(r).toEqual({ midi: 1, soir: 0, total: 1 });
+  });
+  it('service du soir seul = 1 repas', () => {
+    const r = repasDuJour([pLocale('2026-09-22', '18:30', '22:00')], CRENEAUX);
+    expect(r).toEqual({ midi: 0, soir: 1, total: 1 });
+  });
+  it('coupure midi ET soir = 2 repas, même en deux présences distinctes', () => {
+    const r = repasDuJour([
+      pLocale('2026-09-22', '11:30', '14:30'),
+      pLocale('2026-09-22', '18:30', '22:00'),
+    ], CRENEAUX);
+    expect(r).toEqual({ midi: 1, soir: 1, total: 2 });
+  });
+  it('journée continue qui couvre les deux services = 2 repas', () => {
+    const r = repasDuJour([pLocale('2026-09-26', '11:30', '22:00')], CRENEAUX);
+    expect(r).toEqual({ midi: 1, soir: 1, total: 2 });
+  });
+  it('présence hors des deux créneaux = 0 repas', () => {
+    const r = repasDuJour([pLocale('2026-09-22', '15:00', '17:00')], CRENEAUX);
+    expect(r).toEqual({ midi: 0, soir: 0, total: 0 });
+  });
+  it('un simple contact du créneau ne suffit pas, il faut un vrai chevauchement', () => {
+    // Part à 11h30 pile : il n'a pas travaillé pendant le service du midi.
+    const r = repasDuJour([pLocale('2026-09-22', '09:00', '11:30')], CRENEAUX);
+    expect(r).toEqual({ midi: 0, soir: 0, total: 0 });
+  });
+  it('une présence en anomalie ne donne aucun repas', () => {
+    const r = repasDuJour([pLocale('2026-09-22', '11:30', null)], CRENEAUX);
+    expect(r).toEqual({ midi: 0, soir: 0, total: 0 });
+  });
+  it('une présence en cours (sans fin) ne donne aucun repas tant qu’elle n’est pas terminée', () => {
+    const enCours = { ...pLocale('2026-09-22', '11:30', null), statut: 'ouverte' };
+    expect(repasDuJour([enCours], CRENEAUX)).toEqual({ midi: 0, soir: 0, total: 0 });
   });
 });
