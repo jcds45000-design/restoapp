@@ -26,3 +26,43 @@ export function dureeMinutes(presence) {
   if (!Number.isFinite(delta) || delta <= 0) return 0;
   return Math.round(delta / 60000);
 }
+
+// Une présence n'est « mesurée » que si ses DEUX bouts ont été pointés sur la borne
+// au moment où ça se passait. Tout le reste est du déclaratif : croyable, invérifiable.
+export function estMesuree(presence) {
+  return presence?.debut_origine === 'borne' && presence?.fin_origine === 'borne';
+}
+
+// Une anomalie ne vaut AUCUNE minute : ni estimée, ni complétée depuis le planning
+// (spec §3). C'est ce qui empêche le système de produire un total propre et faux.
+export function estAnomalie(presence) {
+  return presence?.statut === 'anomalie' || !presence?.fin
+    || presence?.fin_origine === 'cloture_auto';
+}
+
+// Sépare ce qui a été mesuré de ce qui a été déclaré, et compte les trous.
+// Les trois valeurs sont rendues distinctes : le récap ne les additionne jamais.
+export function qualiteHeures(presences = []) {
+  let minutesPointees = 0;
+  let minutesDeclarees = 0;
+  let anomalies = 0;
+
+  for (const presence of presences) {
+    if (estAnomalie(presence)) { anomalies += 1; continue; }
+    const minutes = dureeMinutes(presence);
+    if (estMesuree(presence)) minutesPointees += minutes;
+    else minutesDeclarees += minutes;
+  }
+
+  const minutesTotales = minutesPointees + minutesDeclarees;
+  return {
+    minutesPointees,
+    minutesDeclarees,
+    anomalies,
+    minutesTotales,
+    // Part réellement mesurée du total. Un taux bas veut dire que le chiffre ne vaut rien,
+    // et c'est une information aussi importante que le chiffre lui-même.
+    tauxFiabilite: minutesTotales === 0 ? 0
+      : Math.round((minutesPointees / minutesTotales) * 100),
+  };
+}
