@@ -192,6 +192,7 @@ export function recapMensuel({
 // donnerait un résultat faux et favorable à l'employeur.
 // Le contrat est validé en amont par recapMensuel : pas de repli à 0 ici, une valeur
 // manquante doit rester visible (NaN) plutôt que d'être masquée.
+// Chaque colonne est arrondie séparément à 0,01 h : « Heures totales » peut différer de 0,01 h de « dont pointées » + « dont déclarées ». Les minutes exactes restent en base (spec §6.6).
 export function lignesExport(recaps = []) {
   return recaps.map((r) => ({
     salarie: r.salarie.name,
@@ -232,9 +233,14 @@ const COLONNES = [
 // Point-virgule et virgule décimale : c'est ce qu'attend Excel en configuration française.
 // Un CSV à la virgule s'ouvrirait en une seule colonne chez le comptable.
 export function versCSV(lignes = []) {
-  const format = (valeur) => (typeof valeur === 'number'
-    ? String(valeur).replace('.', ',')
-    : String(valeur ?? ''));
+  // Texte : d'abord neutraliser un début de formule (Excel l'évaluerait à l'ouverture),
+  // puis entourer de guillemets si la cellule contient un séparateur, un guillemet ou un saut de ligne.
+  const format = (valeur) => {
+    if (typeof valeur === 'number') return String(valeur).replace('.', ',');
+    let texte = String(valeur ?? '');
+    if (/^[=+\-@\t\r]/.test(texte)) texte = `'${texte}`;
+    return /[;"\r\n]/.test(texte) ? `"${texte.replace(/"/g, '""')}"` : texte;
+  };
   const entete = COLONNES.map(([, libelle]) => libelle).join(';');
   const corps = lignes.map((l) => COLONNES.map(([cle]) => format(l[cle])).join(';'));
   return [entete, ...corps].join('\n');

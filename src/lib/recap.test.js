@@ -319,5 +319,51 @@ describe('export comptable', () => {
     expect(csv.split('\n')[0]).toContain('Salarié;Heures totales');
     expect(csv.split('\n')[1]).toContain('9,5');
     expect(csv.split('\n')[1]).not.toContain('9.5');
+    expect(csv.split('\n')[1].split(';')).toHaveLength(12);
+  });
+
+  describe('échappement CSV et injection de formule', () => {
+    const csvPour = (name) => versCSV(lignesExport([{ ...recap, salarie: { ...recap.salarie, name } }]));
+    const premiereCellule = (csv) => csv.split('\n').slice(1).join('\n').split(';')[0];
+
+    // Découpe en enregistrements en respectant les guillemets.
+    const enregistrements = (csv) => {
+      const res = [];
+      let cur = '';
+      let dansGuillemets = false;
+      for (const c of csv) {
+        if (c === '"') dansGuillemets = !dansGuillemets;
+        if (c === '\n' && !dansGuillemets) { res.push(cur); cur = ''; } else cur += c;
+      }
+      res.push(cur);
+      return res;
+    };
+
+    it('met entre guillemets un nom contenant un point-virgule', () => {
+      const csv = csvPour('Dupont;Jean');
+      expect(csv.split('\n')[1].startsWith('"Dupont;Jean";')).toBe(true);
+    });
+
+    it('double les guillemets internes', () => {
+      expect(premiereCellule(csvPour('Jean "JC" D'))).toBe('"Jean ""JC"" D"');
+    });
+
+    it('neutralise les débuts de formule avec une apostrophe', () => {
+      expect(premiereCellule(csvPour('=1+1'))).toBe("'=1+1");
+      expect(premiereCellule(csvPour('@SUM(A1)'))).toBe("'@SUM(A1)");
+      expect(premiereCellule(csvPour('+1'))).toBe("'+1");
+      expect(premiereCellule(csvPour('-1'))).toBe("'-1");
+      expect(premiereCellule(csvPour('\tX'))).toBe("'\tX");
+    });
+
+    it('garde un saut de ligne dans une seule cellule entre guillemets', () => {
+      const csv = csvPour('Jean\nDupont');
+      expect(enregistrements(csv)).toHaveLength(2);
+      expect(csv).toContain('"Jean\nDupont"');
+    });
+
+    it('ne touche pas aux nombres', () => {
+      expect(csvPour('Salarié A').split('\n')[1]).toContain('9,5');
+    });
   });
 });
