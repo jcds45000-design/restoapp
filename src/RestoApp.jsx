@@ -2,7 +2,7 @@ import { useState, useRef, useMemo, useEffect, lazy, Suspense } from "react";
 import { supabase } from './lib/supabase';
 import { repartir } from './lib/taskDispatch';
 import { I } from './lib/icons';
-import { findUserIndexByEmail } from './lib/users';
+import { findUserIndexByEmail, estActif, visibleSurPeriode } from './lib/users';
 import { alertProductsOf } from './lib/stock';
 import { statutPresence, syntheseJour, PRESENCE_LABELS } from './lib/presence';
 import { classerTaches, badgeTaches, dateFenetre, titresManquants } from './lib/taches';
@@ -82,12 +82,16 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
   // affiché. Un gérant qui « voit en tant que » un employé voit bien la vue employé.
   const isGerant = realIsGerant && currentUser.role === "gerant";
   const employees = useMemo(() => usersData.filter(u => u.name !== "Jean Claude"), [usersData]);
+  // Attribution de nouvelles tâches : les anciens salariés ne sont plus proposés.
+  const employesActifs = useMemo(() => employees.filter(estActif), [employees]);
 
   const [section, setSection] = useState("dashboard");
   const [themeKey, setThemeKey] = useState(initialTheme || "kimiko");
   const [showThemePicker, setShowThemePicker] = useState(false);
   const [tasks, setTasks] = useState(initialTasks);
   const [schedule, setSchedule] = useState({});
+  // Accueil (équipe du jour) : un ancien reste visible le jour de son départ ou s'il est planifié.
+  const equipeDuJour = useMemo(() => employees.filter(e => visibleSurPeriode(e, TODAY, TODAY, schedule[e.name])), [employees, schedule]);
   const [products, setProducts] = useState(initialProducts);
   const [sorties, setSorties] = useState(initialSorties);
   const [suppliers, setSuppliers] = useState([]);
@@ -123,7 +127,7 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
     let noPlanning = false;
     if (!presents.length) {
       noPlanning = true;
-      presents = employees
+      presents = employesActifs
         .filter(u => !EXCLUS_REPARTITION.includes(u.name))
         .map(u => ({ name: u.name, isGerant: u.role === 'gerant', ouverture: true, fermeture: true }));
     }
@@ -290,6 +294,7 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
             contrat: e.contrat || 'CDI',
             dateFin: e.date_fin || '',
             appRole: e.app_role || null, // rempli après migration 7
+            active: e.active !== false,
           })),
         ];
         setUsersData(merged);
@@ -310,7 +315,7 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
   }, []);
 
   // Statuts de présence (spec §5) : un salarié non planifié n'est JAMAIS « absent ».
-  const todayStaff = useMemo(() => employees.map(emp => {
+  const todayStaff = useMemo(() => equipeDuJour.map(emp => {
     const shift = schedule[emp.name]?.[TODAY];
     const statut = statutPresence(shift);
     return {
@@ -319,7 +324,7 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
       shift: statut === 'prevu' ? shift : PRESENCE_LABELS[statut],
       status: statut,
     };
-  }), [employees, schedule]);
+  }), [equipeDuJour, schedule]);
   const effectiveSection = (!isGerant && section === "dashboard") ? "tasks" : section;
   const effectiveDate = isGerant ? viewDate : TODAY;
   // Retards (spec §9) : seules les PONCTUELLES passées restent en retard ; les
@@ -621,7 +626,7 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
 
             <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr", gap: isMobile ? 10 : 16, marginBottom: isMobile ? 16 : 28 }}>
               {(() => {
-                const synth = syntheseJour(employees, schedule, TODAY);
+                const synth = syntheseJour(equipeDuJour, schedule, TODAY);
                 let subTxt, color;
                 if (synth.aucunPlanning) {
                   subTxt = 'Aucun planning saisi pour aujourd\'hui';
@@ -737,7 +742,7 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
         </div>
       )}
 
-      {showModal && <TaskModal onClose={() => setShowModal(false)} onSave={addTask} t={t} defaultDate={viewDate !== "overdue" ? viewDate : TODAY} employees={employees} categories={catNames} templates={tmpl} />}
+      {showModal && <TaskModal onClose={() => setShowModal(false)} onSave={addTask} t={t} defaultDate={viewDate !== "overdue" ? viewDate : TODAY} employees={employesActifs} categories={catNames} templates={tmpl} />}
 
       {showTemplatesEditor && <Suspense fallback={<Loading />}><TaskTemplatesModule t={t} F={F} templates={templates} categories={catNames} onAdd={addTemplate} onUpdate={updateTemplate} onDelete={deleteTemplate} onClose={() => setShowTemplatesEditor(false)} /></Suspense>}
 
@@ -808,7 +813,7 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
                             onChange={e => { setTemplateAssignments(prev => prev.map((a, i) => i === globalIdx ? {...a, assignee: e.target.value} : a)); setEditingTemplateIdx(null); }}
                             onBlur={() => setEditingTemplateIdx(null)}
                             style={{ fontSize:13, fontWeight:700, padding:"4px 8px", borderRadius:8, border:`1.5px solid ${colors[creneau]}`, fontFamily:F, color:t.text, background:t.surface, outline:"none", cursor:"pointer" }}>
-                            {empOptions.map(u => <option key={u.name} value={u.name}>{u.name}</option>)}
+                            {empOptions.filter(u => estActif(u) || u.name === task.assignee).map(u => <option key={u.name} value={u.name}>{u.name}</option>)}
                           </select>
                         ) : (
                           <button onClick={() => setEditingTemplateIdx(globalIdx)}
@@ -845,7 +850,7 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
               <div><label style={{ fontSize: 13, fontWeight: 600, color: t.textMuted, marginBottom: 6, display: "block", fontFamily: F }}>Intitulé</label><input value={etTitle} onChange={e => setEtTitle(e.target.value)} style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: `1px solid ${t.border}`, fontSize: 14, fontFamily: F, background: t.surface, color: t.text, outline: "none" }} /></div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                <div><label style={{ fontSize: 13, fontWeight: 600, color: t.textMuted, marginBottom: 6, display: "block", fontFamily: F }}>Assigné à</label><select value={etAssignee} onChange={e => setEtAssignee(e.target.value)} style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: `1px solid ${t.border}`, fontSize: 14, fontFamily: F, background: t.surface, color: t.text, outline: "none", cursor: "pointer" }}>{employees.map(e => <option key={e.name}>{e.name}</option>)}</select></div>
+                <div><label style={{ fontSize: 13, fontWeight: 600, color: t.textMuted, marginBottom: 6, display: "block", fontFamily: F }}>Assigné à</label><select value={etAssignee} onChange={e => setEtAssignee(e.target.value)} style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: `1px solid ${t.border}`, fontSize: 14, fontFamily: F, background: t.surface, color: t.text, outline: "none", cursor: "pointer" }}>{employees.filter(e => estActif(e) || e.name === etAssignee).map(e => <option key={e.name}>{e.name}</option>)}</select></div>
                 <div><label style={{ fontSize: 13, fontWeight: 600, color: t.textMuted, marginBottom: 6, display: "block", fontFamily: F }}>Date prévue</label><input type="date" value={etDueDate} onChange={e => setEtDueDate(e.target.value)} style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: `1px solid ${t.border}`, fontSize: 14, fontFamily: F, background: t.surface, color: t.text, outline: "none", cursor: "pointer" }} /></div>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>

@@ -1,6 +1,7 @@
 import { useState, useMemo, Fragment } from 'react';
 import { supabase } from '../lib/supabase';
 import { repartir, CORVEES, pivotSemaine, decalerJours, titresHorsCatalogue } from '../lib/taskDispatch';
+import { estActif } from '../lib/users';
 
 import { WEEK_START, fmt, fmtShort, addDays, calcHours, travailleOuverture, travailleFermeture, estPresent, F } from '../lib/foundation';
 
@@ -138,7 +139,7 @@ const SemaineView = ({ tasks, setTasks, employees, schedule, t, templates }) => 
         const enEdition = editCell && editCell.title === titre && editCell.date === d;
         if (enEdition) {
           const presents = presentsJour(d);
-          const noms = [...presents, ...employees.map(e => e.name).filter(n => !presents.includes(n))];
+          const noms = [...presents, ...employees.filter(estActif).map(e => e.name).filter(n => !presents.includes(n))];
           return (
             <td key={d} style={cell}>
               <select autoFocus value={c ? c.assignee : ''} onChange={e => assignerCellule(titre, d, e.target.value)} onBlur={() => setEditCell(null)} style={{ width: "100%", fontSize: 12, fontFamily: F, padding: 2 }}>
