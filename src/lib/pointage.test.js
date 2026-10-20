@@ -216,4 +216,31 @@ describe('repasDuJour', () => {
     const enCours = { ...pLocale('2026-09-22', '11:30', null), statut: 'ouverte' };
     expect(repasDuJour([enCours], CRENEAUX)).toEqual({ midi: 0, soir: 0, total: 0 });
   });
+  it('deux présences touchant toutes deux le midi = 1 seul repas', () => {
+    const r = repasDuJour([
+      pLocale('2026-09-22', '09:00', '12:00'),
+      pLocale('2026-09-22', '13:00', '15:00'),
+    ], CRENEAUX);
+    expect(r).toEqual({ midi: 1, soir: 0, total: 1 });
+  });
+  it('heure d’hiver (UTC+1) : 11h30 à 14h30 à Paris = 1 repas du midi', () => {
+    const r = repasDuJour([{
+      jour: '2026-11-10',
+      debut: '2026-11-10T10:30:00.000Z', fin: '2026-11-10T13:30:00.000Z',
+      debut_origine: 'borne', fin_origine: 'borne', statut: 'complete',
+    }], CRENEAUX);
+    expect(r).toEqual({ midi: 1, soir: 0, total: 1 });
+  });
+  it('créneau au format Postgres HH:MM:SS accepté', () => {
+    const c = { midiDebut: '11:30:00', midiFin: '14:30:00', soirDebut: '18:30:00', soirFin: '22:00:00' };
+    expect(repasDuJour([pLocale('2026-09-22', '11:30', '14:30')], c).midi).toBe(1);
+  });
+  it('créneau mal formé refusé', () => {
+    expect(() => repasDuJour([], { ...CRENEAUX, midiDebut: '11h30' })).toThrow('creneau repas invalide');
+    expect(() => repasDuJour([], { ...CRENEAUX, soirFin: '25:00' })).toThrow('creneau repas invalide');
+    expect(() => repasDuJour([], { ...CRENEAUX, soirFin: '22:60' })).toThrow('creneau repas invalide');
+  });
+  it('créneaux absents refusés', () => {
+    expect(() => repasDuJour([], undefined)).toThrow('creneaux repas manquants');
+  });
 });

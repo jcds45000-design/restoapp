@@ -94,8 +94,14 @@ function minutesLocales(iso) {
   return h * 60 + m;
 }
 
+// Accepte "HH:MM" et "HH:MM:SS" (format time de Postgres). Tout le reste est refusé :
+// un créneau illisible ne doit pas produire 0 repas en silence.
 function enMinutes(hhmm) {
+  if (typeof hhmm !== 'string' || !/^\d{1,2}:\d{2}(:\d{2})?$/.test(hhmm)) {
+    throw new Error('creneau repas invalide : ' + hhmm);
+  }
   const [h, m] = hhmm.split(':').map(Number);
+  if (h > 23 || m > 59) throw new Error('creneau repas invalide : ' + hhmm);
   return h * 60 + m;
 }
 
@@ -112,7 +118,9 @@ function chevauche(presence, debutCreneau, finCreneau) {
 // Un repas par service effectivement travaillé, quel que soit le nombre de présences
 // (spec §6.4). La coupure produit deux présences et deux repas, la journée continue
 // produit une présence et deux repas.
+// Repas du jour de DÉBUT uniquement : une présence continue qui atteindrait le midi du lendemain n'est pas gérée (cas irréaliste, la clôture d'office à 14 h la passe en anomalie).
 export function repasDuJour(presencesDuJour = [], creneaux) {
+  if (!creneaux) throw new Error('creneaux repas manquants');
   const midiDebut = enMinutes(creneaux.midiDebut);
   const midiFin = enMinutes(creneaux.midiFin);
   const soirDebut = enMinutes(creneaux.soirDebut);
