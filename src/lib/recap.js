@@ -187,3 +187,55 @@ export function recapMensuel({
     ecartContratHeures: Math.round((heuresTotales - heuresContractuellesMois) * 100) / 100,
   };
 }
+
+// Les heures sup se somment SEMAINE PAR SEMAINE. Les recalculer sur le total mensuel
+// donnerait un résultat faux et favorable à l'employeur.
+// Le contrat est validé en amont par recapMensuel : pas de repli à 0 ici, une valeur
+// manquante doit rester visible (NaN) plutôt que d'être masquée.
+export function lignesExport(recaps = []) {
+  return recaps.map((r) => ({
+    salarie: r.salarie.name,
+    mois: r.mois,
+    heuresContrat: Number(r.salarie.heures_hebdo),
+    heuresTotales: r.heuresTotales,
+    heuresPointees: r.heuresPointees,
+    heuresDeclarees: r.heuresDeclarees,
+    heuresSupplementaires: Math.round(
+      r.semaines.reduce((t, s) => t + s.supplementaires, 0) * 100,
+    ) / 100,
+    heuresComplementaires: Math.round(
+      r.semaines.reduce((t, s) => t + s.complementaires, 0) * 100,
+    ) / 100,
+    repasMidi: r.repas.midi,
+    repasSoir: r.repas.soir,
+    repasTotal: r.repas.total,
+    anomalies: r.qualite.anomalies,
+    fiabilitePct: r.qualite.tauxFiabilite,
+  }));
+}
+
+const COLONNES = [
+  ['salarie', 'Salarié'],
+  ['heuresTotales', 'Heures totales'],
+  ['heuresContrat', 'Heures contrat/semaine'],
+  ['heuresSupplementaires', 'Heures supplémentaires'],
+  ['heuresComplementaires', 'Heures complémentaires'],
+  ['repasMidi', 'Repas midi'],
+  ['repasSoir', 'Repas soir'],
+  ['repasTotal', 'Repas total'],
+  ['heuresPointees', 'dont pointées'],
+  ['heuresDeclarees', 'dont déclarées après coup'],
+  ['anomalies', 'Anomalies non résolues'],
+  ['fiabilitePct', 'Fiabilité %'],
+];
+
+// Point-virgule et virgule décimale : c'est ce qu'attend Excel en configuration française.
+// Un CSV à la virgule s'ouvrirait en une seule colonne chez le comptable.
+export function versCSV(lignes = []) {
+  const format = (valeur) => (typeof valeur === 'number'
+    ? String(valeur).replace('.', ',')
+    : String(valeur ?? ''));
+  const entete = COLONNES.map(([, libelle]) => libelle).join(';');
+  const corps = lignes.map((l) => COLONNES.map(([cle]) => format(l[cle])).join(';'));
+  return [entete, ...corps].join('\n');
+}

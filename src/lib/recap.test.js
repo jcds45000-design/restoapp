@@ -2,6 +2,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   cleSemaine, moisDeRattachement, heuresSupplementaires, recapMensuel, semainesDuMois,
+  lignesExport, versCSV,
 } from './recap.js';
 
 describe('cleSemaine', () => {
@@ -278,5 +279,45 @@ describe('recapMensuel : contrat du mois', () => {
       mois: '2026-10', creneaux: CRENEAUX,
     });
     expect(r.heuresContractuellesMois).toBe(24 * 2); // W40 et W41
+  });
+});
+
+describe('export comptable', () => {
+  const recap = {
+    salarie: { name: 'Salarié A', heures_hebdo: 24 },
+    mois: '2026-09',
+    heuresTotales: 9.5, heuresPointees: 9.5, heuresDeclarees: 0,
+    qualite: { anomalies: 0, tauxFiabilite: 100 },
+    repas: { midi: 2, soir: 1, total: 3 },
+    semaines: [{ cle: '2026-W39', heures: 9.5, supplementaires: 0, complementaires: 0 }],
+  };
+
+  it('produit une ligne par salarié avec heures, natures et repas', () => {
+    const [ligne] = lignesExport([recap]);
+    expect(ligne.salarie).toBe('Salarié A');
+    expect(ligne.heuresTotales).toBe(9.5);
+    expect(ligne.heuresComplementaires).toBe(0);
+    expect(ligne.repasTotal).toBe(3);
+    expect(ligne.anomalies).toBe(0);
+  });
+
+  it('somme les heures supplémentaires SEMAINE PAR SEMAINE, pas sur le total du mois', () => {
+    const surDeuxSemaines = {
+      ...recap,
+      semaines: [
+        { cle: '2026-W39', heures: 30, supplementaires: 0, complementaires: 6 },
+        { cle: '2026-W40', heures: 38, supplementaires: 3, complementaires: 11 },
+      ],
+    };
+    const [ligne] = lignesExport([surDeuxSemaines]);
+    expect(ligne.heuresSupplementaires).toBe(3);
+    expect(ligne.heuresComplementaires).toBe(17);
+  });
+
+  it('le CSV utilise le point-virgule et la virgule décimale, lisibles par Excel FR', () => {
+    const csv = versCSV(lignesExport([recap]));
+    expect(csv.split('\n')[0]).toContain('Salarié;Heures totales');
+    expect(csv.split('\n')[1]).toContain('9,5');
+    expect(csv.split('\n')[1]).not.toContain('9.5');
   });
 });
