@@ -1,6 +1,9 @@
 // src/lib/recap.js
 // Agrégation pure des présences pour le récap mensuel (spec §6).
 // Aucun accès Supabase. Les entrées sont des présences déjà chargées.
+import {
+  dureeMinutes, qualiteHeures, repasDuJour, estAnomalie,
+} from './pointage.js';
 
 // Date UTC à midi pour un jour AAAA-MM-JJ réel, sinon null (refuse aussi 2026-02-30).
 function dateValide(jour) {
@@ -65,5 +68,74 @@ export function heuresSupplementaires(heuresFaites, heuresContrat) {
   return {
     supplementaires: Math.round(supplementaires * 100) / 100,
     complementaires: Math.round(complementaires * 100) / 100,
+  };
+}
+
+function grouperPar(liste, cle) {
+  const groupes = new Map();
+  for (const element of liste) {
+    const k = cle(element);
+    if (!groupes.has(k)) groupes.set(k, []);
+    groupes.get(k).push(element);
+  }
+  return groupes;
+}
+
+const enHeures = (minutes) => Math.round((minutes / 60) * 100) / 100;
+
+// Récap d'un salarié pour un mois (format 'AAAA-MM'), prêt pour le comptable.
+// ATTENTION : le mois ne filtre PAS sur le jour calendaire, mais sur le MOIS DE
+// RATTACHEMENT DE LA SEMAINE. Sans ça, la semaine du 28 septembre au 4 octobre serait
+// tronquée à deux jours dans le récap de septembre, et ses heures supplémentaires
+// calculées sur une semaine incomplète, donc sous-estimées (spec §6.2).
+export function recapMensuel({
+  salarie, presences = [], mois, creneaux, regleSemaine = 'mois_fin',
+}) {
+  const duMois = presences
+    .filter((p) => p.employee_id === salarie.id
+      && moisDeRattachement(p.jour, regleSemaine) === mois)
+    .sort((a, b) => String(a.debut).localeCompare(String(b.debut)));
+
+  const qualite = qualiteHeures(duMois);
+
+  const parJour = grouperPar(duMois, (p) => p.jour);
+  let repasMidi = 0;
+  let repasSoir = 0;
+  const jours = [];
+  for (const [jour, presencesDuJour] of [...parJour.entries()].sort()) {
+    const repas = repasDuJour(presencesDuJour, creneaux);
+    repasMidi += repas.midi;
+    repasSoir += repas.soir;
+    jours.push({
+      jour,
+      presences: presencesDuJour,
+      minutes: presencesDuJour.reduce((t, p) => t + (estAnomalie(p) ? 0 : dureeMinutes(p)), 0),
+      repas,
+    });
+  }
+
+  const parSemaine = grouperPar(jours, (j) => cleSemaine(j.jour));
+  const semaines = [...parSemaine.entries()].sort().map(([cle, joursSemaine]) => {
+    const heures = enHeures(joursSemaine.reduce((t, j) => t + j.minutes, 0));
+    return { cle, heures, ...heuresSupplementaires(heures, salarie.heures_hebdo) };
+  });
+
+  const heuresTotales = enHeures(qualite.minutesTotales);
+  return {
+    salarie,
+    mois,
+    jours,
+    semaines,
+    heuresTotales,
+    heuresPointees: enHeures(qualite.minutesPointees),
+    heuresDeclarees: enHeures(qualite.minutesDeclarees),
+    qualite,
+    repas: { midi: repasMidi, soir: repasSoir, total: repasMidi + repasSoir },
+    anomalies: duMois.filter(estAnomalie),
+    // Écart au CONTRAT, pas au planning : le planning n'est pas tenu à l'avance,
+    // le comptable ne doit pas voir d'écarts imaginaires (spec §6, décision).
+    heuresContractuellesMois: enHeures(
+      (Number(salarie.heures_hebdo) || 0) * semaines.length * 60,
+    ),
   };
 }
