@@ -47,3 +47,51 @@ describe('heuresSupplementaires', () => {
     expect(heuresSupplementaires(18, 24)).toEqual({ supplementaires: 0, complementaires: 0 });
   });
 });
+
+describe('heuresSupplementaires : seuil fixe de 35 h', () => {
+  it('un contrat de 39 h : les heures 36 à 39 sont bien comptées', () => {
+    expect(heuresSupplementaires(39, 39)).toEqual({ supplementaires: 4, complementaires: 0 });
+    expect(heuresSupplementaires(41, 39)).toEqual({ supplementaires: 6, complementaires: 0 });
+  });
+  it('temps partiel : complémentaires jusqu’à 35 h, supplémentaires au-delà', () => {
+    expect(heuresSupplementaires(38, 24)).toEqual({ supplementaires: 3, complementaires: 11 });
+    expect(heuresSupplementaires(35, 24)).toEqual({ supplementaires: 0, complementaires: 11 });
+  });
+  it('un contrat à 0 h est accepté : tout est complémentaire jusqu’à 35 h', () => {
+    expect(heuresSupplementaires(10, 0)).toEqual({ supplementaires: 0, complementaires: 10 });
+  });
+});
+
+describe('heuresSupplementaires : entrées invalides', () => {
+  it('refuse un contrat absent ou invalide', () => {
+    for (const mauvais of [null, undefined, 'abc', -1]) {
+      expect(() => heuresSupplementaires(30, mauvais)).toThrow('heures contractuelles invalides : ' + mauvais);
+    }
+  });
+  it('refuse des heures faites invalides', () => {
+    for (const mauvais of ['abc', -1, null, undefined]) {
+      expect(() => heuresSupplementaires(mauvais, 35)).toThrow('heures faites invalides : ' + mauvais);
+    }
+  });
+});
+
+describe('semaines : entrées invalides', () => {
+  it('cleSemaine refuse un jour invalide', () => {
+    expect(() => cleSemaine('abc')).toThrow('cleSemaine : jour invalide');
+    expect(() => cleSemaine(undefined)).toThrow('cleSemaine : jour invalide');
+  });
+  it('moisDeRattachement refuse une règle inconnue mais garde son défaut si omise', () => {
+    expect(() => moisDeRattachement('2026-09-29', 'mois_fn')).toThrow('regle de rattachement inconnue : mois_fn');
+    expect(() => moisDeRattachement('2026-09-29', null)).toThrow('regle de rattachement inconnue : null');
+    expect(moisDeRattachement('2026-09-29')).toBe('2026-10');
+  });
+});
+
+describe('semaines : limites d’année', () => {
+  it('respecte la numérotation ISO autour du 1er janvier', () => {
+    expect(cleSemaine('2026-12-31')).toBe('2026-W53');
+    expect(cleSemaine('2027-01-04')).toBe('2027-W01');
+    expect(cleSemaine('2025-12-29')).toBe('2026-W01');
+    expect(moisDeRattachement('2026-12-31', 'mois_fin')).toBe('2027-01');
+  });
+});
