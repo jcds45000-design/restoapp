@@ -1,7 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { supabase } from './lib/supabase';
+import { themes } from './lib/foundation';
 import Login from './Login';
 import RestoApp from './RestoApp';
+
+const BorneModule = lazy(() => import('./components/BorneModule'));
 
 export default function App() {
   const [user, setUser] = useState(null);
@@ -44,6 +47,12 @@ export default function App() {
 
   if (!user) {
     return <Login onLogin={handleLogin} />;
+  }
+
+  // Borne de pointage : adresse dédiée, rendue SANS RestoApp. Quelqu'un qui prend la
+  // tablette ne peut pas naviguer vers les stocks ou les finances.
+  if (window.location.pathname === '/borne') {
+    return <Suspense fallback={null}><BorneModule t={themes[themeKey] || themes.kimiko} /></Suspense>;
   }
 
   return <RestoApp authUser={user} initialTheme={themeKey} onLogout={handleLogout} />;
