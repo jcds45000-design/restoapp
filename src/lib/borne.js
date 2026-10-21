@@ -1,5 +1,5 @@
 // Logique pure de la borne de pointage (spec §5.1 et §8). Aucun accès Supabase :
-// les réponses des fonctions pointer() et etat_pointage() sont traduites ici en textes.
+// les réponses des fonctions pointer(), etat_pointage() et declarer_depart() sont traduites ici en textes.
 
 /** Libellé du bouton UNIQUE, déduit de etat_pointage(). null tant que l'état est inconnu. */
 export function libelleBouton(etat) {
@@ -58,4 +58,81 @@ export function messagePointage(data, avecPhoto) {
 export function messageErreurBorne(brut = '') {
   if (brut.includes('appareil non autorise')) return 'Cet appareil n’est pas la borne de pointage.';
   return 'Pointage indisponible, rien n’a été enregistré. Préviens le responsable.';
+}
+
+// ─── Régularisation d'un oubli (tâche 9, spec §5.1) ─────────────
+
+const PARTIES_PARIS = new Intl.DateTimeFormat('en-GB', {
+  timeZone: 'Europe/Paris', hourCycle: 'h23',
+  year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
+});
+
+/** Date et heure murales de Paris à un instant donné, en nombres. */
+function partiesParis(ms) {
+  const p = Object.fromEntries(PARTIES_PARIS.formatToParts(new Date(ms)).map((x) => [x.type, Number(x.value)]));
+  return { an: p.year, mois: p.month, jour: p.day, h: p.hour, m: p.minute };
+}
+
+/** Instant UTC d'une heure murale de Paris : l'appareil peut être réglé n'importe comment. */
+function parisVersInstant(an, mois, jour, h, m) {
+  const naif = Date.UTC(an, mois - 1, jour, h, m);
+  const decalage = (ms) => {
+    const p = partiesParis(ms);
+    return Date.UTC(p.an, p.mois - 1, p.jour, p.h, p.m) - Math.floor(ms / 60000) * 60000;
+  };
+  // Deux passes : la première estime le décalage, la seconde le corrige près d'un changement d'heure.
+  return naif - decalage(naif - decalage(naif));
+}
+
+/** « mardi 20 octobre », jour de Paris. */
+export function jourParis(iso) {
+  return new Date(iso).toLocaleDateString('fr-FR',
+    { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Europe/Paris' });
+}
+
+/**
+ * Heure de départ oubliée, saisie « HHMM » sur le clavier de la borne, en instant ISO.
+ * Placée le jour de l'arrivée ; si elle ne la suit pas, c'est un départ après minuit,
+ * donc le lendemain. Le serveur refuse ensuite toute durée au-delà de la clôture
+ * automatique, ce qui écarte une faute de frappe lue comme « le lendemain ».
+ * null si la saisie n'est pas une heure.
+ */
+export function departDeclare(debutIso, saisie) {
+  if (!/^\d{4}$/.test(saisie || '')) return null;
+  const h = Number(saisie.slice(0, 2));
+  const m = Number(saisie.slice(2));
+  if (h > 23 || m > 59) return null;
+  const debut = new Date(debutIso).getTime();
+  const j = partiesParis(debut);
+  let depart = parisVersInstant(j.an, j.mois, j.jour, h, m);
+  if (depart <= debut) depart = parisVersInstant(j.an, j.mois, j.jour + 1, h, m);
+  return new Date(depart).toISOString();
+}
+
+/**
+ * Traduit la réponse de declarer_depart(). `etape` dit où renvoyer le salarié quand
+ * il peut corriger lui-même : son code, ou l'heure saisie.
+ */
+export function messageRegularisation(data, oubli) {
+  if (data?.action === 'regularise') {
+    return { ok: true, texte: `Merci, départ du ${jourParis(oubli.debut)} enregistré à ${heureParis(data.heure)}.` };
+  }
+  if (data?.action === 'erreur') {
+    switch (data.motif) {
+      case 'code_invalide':
+        return { ok: false, etape: 'code', texte: 'Code incorrect. Réessaie.' };
+      case 'heure_invalide':
+        // Le futur est déjà filtré sur la borne, et une heure avant l'arrivée y passe au
+        // lendemain : en pratique, le serveur ne refuse qu'une journée trop longue.
+        return { ok: false, etape: 'heure', texte: 'Heure refusée : la journée serait trop longue. Vérifie l’heure.' };
+      case 'presence_non_regularisable':
+        // Le gérant l'a corrigé entre-temps : rien à refaire, le salarié peut pointer.
+        return { ok: true, texte: 'Cet oubli a déjà été corrigé par le responsable.' };
+      case 'trop_de_tentatives':
+        return { ok: false, texte: 'Trop d’essais. Patiente quelques minutes.' };
+      default:
+        break;
+    }
+  }
+  return { ok: false, texte: messageErreurBorne() };
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { libelleBouton, dureeLisible, minutesDepuis, heureParis, messagePointage, messageErreurBorne } from './borne';
+import { libelleBouton, dureeLisible, minutesDepuis, heureParis, messagePointage, messageErreurBorne, jourParis, departDeclare, messageRegularisation } from './borne';
 
 describe('libelleBouton', () => {
   it('propose ARRIVÉE quand le salarié n’est pas en poste', () => {
@@ -85,5 +85,66 @@ describe('messageErreurBorne', () => {
   it('n’affiche jamais le message technique brut', () => {
     expect(messageErreurBorne('function public.pointer does not exist')).not.toMatch(/function|exist/);
     expect(messageErreurBorne(undefined)).toMatch(/Préviens le responsable/);
+  });
+});
+
+describe('jourParis', () => {
+  it('donne le jour en toutes lettres, à l’heure de Paris', () => {
+    // 22:30 UTC le 20/10 = 00:30 le 21/10 à Paris
+    expect(jourParis('2026-10-20T22:30:00Z')).toBe('mercredi 21 octobre');
+    expect(jourParis('2026-10-20T09:00:00Z')).toBe('mardi 20 octobre');
+  });
+});
+
+describe('departDeclare', () => {
+  // Arrivée le mardi 20/10 à 11:02, heure de Paris (UTC+2 en octobre avant le 25)
+  const debut = '2026-10-20T09:02:00Z';
+  it('place l’heure saisie le jour de l’arrivée, à l’heure de Paris', () => {
+    expect(departDeclare(debut, '2215')).toBe('2026-10-20T20:15:00.000Z');
+  });
+  it('passe au lendemain quand l’heure saisie précède l’arrivée (départ après minuit)', () => {
+    expect(departDeclare('2026-10-20T16:00:00Z', '0030')).toBe('2026-10-20T22:30:00.000Z');
+  });
+  it('tient compte du passage à l’heure d’hiver (UTC+1 après le 25/10)', () => {
+    expect(departDeclare('2026-10-26T10:00:00Z', '2200')).toBe('2026-10-26T21:00:00.000Z');
+  });
+  it('refuse une saisie incomplète ou une heure qui n’existe pas', () => {
+    expect(departDeclare(debut, '221')).toBe(null);
+    expect(departDeclare(debut, '2460')).toBe(null);
+    expect(departDeclare(debut, '1275')).toBe(null);
+    expect(departDeclare(debut, '')).toBe(null);
+  });
+  it('n’accepte jamais un départ égal à l’arrivée', () => {
+    expect(departDeclare(debut, '1102')).toBe('2026-10-21T09:02:00.000Z');
+  });
+});
+
+describe('messageRegularisation', () => {
+  const oubli = { id: 'x', jour: '2026-10-20', debut: '2026-10-20T09:02:00Z' };
+  it('confirme le départ déclaré, avec le jour de l’oubli', () => {
+    expect(messageRegularisation({ action: 'regularise', salarie: 'Salarié A', heure: '2026-10-20T20:15:00Z' }, oubli))
+      .toEqual({ ok: true, texte: 'Merci, départ du mardi 20 octobre enregistré à 22:15.' });
+  });
+  it('reste sur le code quand il est faux', () => {
+    expect(messageRegularisation({ action: 'erreur', motif: 'code_invalide' }, oubli))
+      .toEqual({ ok: false, etape: 'code', texte: 'Code incorrect. Réessaie.' });
+  });
+  it('renvoie vers l’heure quand le serveur la refuse', () => {
+    const m = messageRegularisation({ action: 'erreur', motif: 'heure_invalide' }, oubli);
+    expect(m.ok).toBe(false);
+    expect(m.etape).toBe('heure');
+    expect(m.texte).toMatch(/^Heure refusée/);
+  });
+  it('signale un oubli déjà corrigé par le responsable, sans erreur', () => {
+    expect(messageRegularisation({ action: 'erreur', motif: 'presence_non_regularisable' }, oubli))
+      .toEqual({ ok: true, texte: 'Cet oubli a déjà été corrigé par le responsable.' });
+  });
+  it('bloque après trop d’essais', () => {
+    expect(messageRegularisation({ action: 'erreur', motif: 'trop_de_tentatives' }, oubli))
+      .toEqual({ ok: false, texte: 'Trop d’essais. Patiente quelques minutes.' });
+  });
+  it('ne prétend jamais avoir régularisé sur une réponse inattendue', () => {
+    expect(messageRegularisation(null, oubli).ok).toBe(false);
+    expect(messageRegularisation({ action: 'autre' }, oubli).ok).toBe(false);
   });
 });
