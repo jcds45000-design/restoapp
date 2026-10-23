@@ -9,10 +9,9 @@ import { supabase } from '../lib/supabase';
 import { F } from '../lib/foundation';
 import {
   libelleBouton, dureeLisible, minutesDepuis, heureParis, messagePointage, messageErreurBorne,
-  jourParis, departDeclare, messageRegularisation,
+  jourParis, departDeclare, messageRegularisation, CLE_JETON,
 } from '../lib/borne';
 
-const CLE_JETON = 'kimiko_borne_jeton';
 const DUREE_MESSAGE_MS = 3000;
 // Clavier abandonné (appel en cuisine, client) : retour à la grille pour que le
 // suivant ne pointe pas sous le nom d'un collègue.

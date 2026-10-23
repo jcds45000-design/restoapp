@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { I } from '../lib/icons';
+import HorairesPointageCard from './HorairesPointageCard';
+import BorneAppareilCard from './BorneAppareilCard';
 import { TOUTES_PERMISSIONS, PERMISSION_LABELS, ROLE_LABELS, permissionsParDefaut } from '../lib/permissions';
 
 // migrationActive : vrai quand la migration 7 (rôles/permissions) est appliquée en base ;
@@ -229,6 +231,10 @@ const SettingsModule = ({ t, F, authUser, categories = [], onAddCategory, onRena
           </div>
         )}
       </div>
+
+      <HorairesPointageCard t={t} F={F} />
+
+      <BorneAppareilCard t={t} F={F} />
 
       {migrationActive && (
       <div style={{ background: t.surface, borderRadius: 16, border: `1px solid ${t.border}`, padding: 28, marginBottom: 20 }}>

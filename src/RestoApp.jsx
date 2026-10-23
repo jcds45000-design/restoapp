@@ -13,6 +13,7 @@ const RentabiliteCarteModule = lazy(() => import('./components/RentabiliteCarteM
 const PilotageCoutsModule = lazy(() => import('./components/PilotageCoutsModule'));
 const VentesModule = lazy(() => import('./components/VentesModule'));
 const EquipeModule = lazy(() => import('./components/EquipeModule'));
+const RecapPointageModule = lazy(() => import('./components/RecapPointageModule'));
 const PlanningModule = lazy(() => import('./components/PlanningModule'));
 const SemaineView = lazy(() => import('./components/SemaineView'));
 const TaskTemplatesModule = lazy(() => import('./components/TaskTemplatesModule'));
@@ -293,6 +294,7 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
             dateEntree: e.date_entree || e.created_at?.slice(0, 10) || '',
             contrat: e.contrat || 'CDI',
             dateFin: e.date_fin || '',
+            aUnCode: Boolean(e.pin_hash), // a un code de pointage ; l'empreinte elle-meme n'est jamais affichee
             appRole: e.app_role || null, // rempli après migration 7
             active: e.active !== false,
           })),
@@ -473,6 +475,7 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
     { id: "tasks", label: "Tâches", icon: I.tasks, badge: empBadge },
     { id: "equipe", label: "Équipe", icon: I.users },
     { id: "planning", label: "Planning & RH", icon: I.calendar },
+    { id: "pointage", label: "Pointage", icon: I.clock },
     { id: "stocks", label: "Stocks", icon: I.box, badge: stockAlertCount + pendingSortiesCount },
     { id: "recettes", label: "Recettes", icon: I.box },
     { id: "rentabilite", label: "Rentabilité", icon: I.euro },
@@ -603,6 +606,11 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
           <Suspense fallback={<Loading />}><EquipeModule t={t} employees={employees} usersData={usersData} setUsersData={setUsersData} isMobile={isMobile} migrationActive={migrationActive} /></Suspense>
         )}
 
+        {/* POINTAGE : ce que la borne a enregistre + recap mensuel (gerant seul) */}
+        {effectiveSection === "pointage" && isGerant && (
+          <Suspense fallback={<Loading />}><RecapPointageModule t={t} /></Suspense>
+        )}
+
         {/* PLANNING */}
         {effectiveSection === "planning" && (
           <Suspense fallback={<Loading />}><PlanningModule t={t} schedule={schedule} setSchedule={setSchedule} pointage={initialPointage} isGerant={isGerant} currentUserName={currentUser.name} employees={employees} /></Suspense>
@@ -692,7 +700,7 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
         )}
 
         {/* Placeholder */}
-        {!["dashboard", "tasks", "planning", "stocks", "recettes", "rentabilite", "couts", "ventes", "finances", "equipe", "settings"].includes(effectiveSection) && (
+        {!["dashboard", "tasks", "planning", "pointage", "stocks", "recettes", "rentabilite", "couts", "ventes", "finances", "equipe", "settings"].includes(effectiveSection) && (
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "60vh", color: t.textMuted }}>
             <div style={{ fontSize: 48, marginBottom: 16, opacity: 0.3 }}>🚧</div>
             <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 4 }}>Module « {navItems.find(n => n.id === effectiveSection)?.label || effectiveSection} »</div>
@@ -724,7 +732,7 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
       {isMobile && showMobileMenu && (
         <div style={{ position: "fixed", bottom: 60, left: 0, right: 0, background: t.surface, borderTop: `1px solid ${t.border}`, padding: "12px 16px", zIndex: 899, boxShadow: "0 -4px 20px rgba(0,0,0,0.1)" }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            {[{ id: "stocks", label: "Stocks", icon: I.box, badge: stockAlertCount+pendingSortiesCount }, { id: "recettes", label: "Recettes", icon: I.box }, { id: "rentabilite", label: "Rentabilité", icon: I.euro }, { id: "couts", label: "Coûts & marges", icon: I.euro }, { id: "ventes", label: "Ventes", icon: I.orders }, { id: "orders", label: "Commandes", icon: I.orders }, { id: "finances", label: "Finances", icon: I.euro }, { id: "settings", label: "Paramètres", icon: I.settings }].map(item => (
+            {[{ id: "pointage", label: "Pointage", icon: I.clock }, { id: "stocks", label: "Stocks", icon: I.box, badge: stockAlertCount+pendingSortiesCount }, { id: "recettes", label: "Recettes", icon: I.box }, { id: "rentabilite", label: "Rentabilité", icon: I.euro }, { id: "couts", label: "Coûts & marges", icon: I.euro }, { id: "ventes", label: "Ventes", icon: I.orders }, { id: "orders", label: "Commandes", icon: I.orders }, { id: "finances", label: "Finances", icon: I.euro }, { id: "settings", label: "Paramètres", icon: I.settings }].map(item => (
               <button key={item.id} onClick={() => { setSection(item.id); setShowMobileMenu(false); }} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", borderRadius: 10, border: "none", cursor: "pointer", background: effectiveSection === item.id ? t.primary + "12" : "transparent", color: effectiveSection === item.id ? t.primary : t.text, fontSize: 14, fontWeight: 500, fontFamily: F, textAlign: "left", width: "100%" }}>
                 {item.icon}{item.label}
               </button>

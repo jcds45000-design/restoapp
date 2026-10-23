@@ -105,19 +105,24 @@ function enMinutes(hhmm) {
   return h * 60 + m;
 }
 
-// Chevauchement STRICT : partir à 11h30 pile quand le service commence à 11h30
-// ne donne pas droit à un repas.
-function chevauche(presence, debutCreneau, finCreneau) {
+// Seuils de la convention collective restauration rapide (brochure 3245, art. repas §d),
+// retenus par Jean-Claude le 23/10/2026.
+const MINUTES_DANS_LA_POINTE = 60; // §d.1 : couvrir au moins 1 h d'une heure de pointe
+const MINUTES_DANS_LA_JOURNEE = 5 * 60; // §d.2 : à défaut, 5 h de travail effectif, consécutives ou non
+
+// Minutes passées dans le créneau. La fin se déduit de la durée réelle et non de l'heure
+// affichée : un service qui finit après minuit reste ainsi d'un seul tenant.
+function minutesDansCreneau(presence, debutCreneau, finCreneau) {
   const debut = minutesLocales(presence.debut);
-  let fin = minutesLocales(presence.fin);
-  // Service qui déborde sur le lendemain : on prolonge au-delà de minuit.
-  if (fin <= debut) fin += 24 * 60;
-  return debut < finCreneau && fin > debutCreneau;
+  const fin = debut + dureeMinutes(presence);
+  return Math.max(0, Math.min(fin, finCreneau) - Math.max(debut, debutCreneau));
 }
 
-// Un repas par service effectivement travaillé, quel que soit le nombre de présences
-// (spec §6.4). La coupure produit deux présences et deux repas, la journée continue
-// produit une présence et deux repas.
+// Droit au repas selon la convention : un repas par heure de pointe dans laquelle le salarié
+// a travaillé au moins 1 h, présences du jour cumulées (la coupure produit deux présences et
+// deux repas, la journée continue une présence et deux repas). S'il ne couvre aucune pointe,
+// 5 h de travail dans la journée ouvrent un repas « hors pointe ». Un passage de quelques
+// minutes ne donne donc rien (cas réel du 23/10/2026 : 3 minutes avaient produit un repas).
 // Repas du jour de DÉBUT uniquement : une présence continue qui atteindrait le midi du lendemain n'est pas gérée (cas irréaliste, la clôture d'office à 14 h la passe en anomalie).
 export function repasDuJour(presencesDuJour = [], creneaux) {
   if (!creneaux) throw new Error('creneaux repas manquants');
@@ -126,13 +131,18 @@ export function repasDuJour(presencesDuJour = [], creneaux) {
   const soirDebut = enMinutes(creneaux.soirDebut);
   const soirFin = enMinutes(creneaux.soirFin);
 
-  let midi = 0;
-  let soir = 0;
+  let minutesMidi = 0;
+  let minutesSoir = 0;
+  let minutesJournee = 0;
   for (const presence of presencesDuJour) {
     // Anomalie ou présence en cours : pas de fin connue, donc pas de repas deviné.
     if (estAnomalie(presence) || estEnCours(presence)) continue;
-    if (chevauche(presence, midiDebut, midiFin)) midi = 1;
-    if (chevauche(presence, soirDebut, soirFin)) soir = 1;
+    minutesMidi += minutesDansCreneau(presence, midiDebut, midiFin);
+    minutesSoir += minutesDansCreneau(presence, soirDebut, soirFin);
+    minutesJournee += dureeMinutes(presence);
   }
-  return { midi, soir, total: midi + soir };
+  const midi = minutesMidi >= MINUTES_DANS_LA_POINTE ? 1 : 0;
+  const soir = minutesSoir >= MINUTES_DANS_LA_POINTE ? 1 : 0;
+  const horsPointe = midi + soir === 0 && minutesJournee >= MINUTES_DANS_LA_JOURNEE ? 1 : 0;
+  return { midi, soir, horsPointe, total: midi + soir + horsPointe };
 }

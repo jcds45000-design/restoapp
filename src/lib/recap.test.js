@@ -2,7 +2,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   cleSemaine, moisDeRattachement, heuresSupplementaires, recapMensuel, semainesDuMois,
-  lignesExport, versCSV,
+  lignesExport, versCSV, fenetreChargement, salariesDuRecap,
 } from './recap.js';
 
 describe('cleSemaine', () => {
@@ -99,7 +99,8 @@ describe('semaines : limites d’année', () => {
   });
 });
 
-const CRENEAUX = { midiDebut: '11:30', midiFin: '14:30', soirDebut: '18:30', soirFin: '22:00' };
+// Heures de pointe de Kimiko (décision du 23/10/2026).
+const CRENEAUX = { midiDebut: '12:00', midiFin: '14:00', soirDebut: '19:00', soirFin: '21:00' };
 // Fixtures ANONYMISÉES : dépôt public, jamais de vrai nom ni de vrai taux.
 const SALARIE = { id: 'emp-a', name: 'Salarié A', heures_hebdo: 24, contrat: 'CDI', taux_h: 12 };
 
@@ -130,6 +131,21 @@ describe('recapMensuel', () => {
     expect(r.repas.total).toBe(3);
     expect(r.repas.midi).toBe(2);
     expect(r.repas.soir).toBe(1);
+    expect(r.repas.horsPointe).toBe(0);
+  });
+
+  it('compte le repas hors pointe (5 h sans couvrir de pointe) dans le total', () => {
+    const r = recapMensuel({
+      salarie: SALARIE,
+      presences: [
+        pres('2026-09-22', '14:00', '19:00'),  // 5 h, aucune pointe : 1 repas hors pointe
+        pres('2026-09-23', '11:30', '14:30'),  // repas midi
+        pres('2026-09-24', '21:55', '21:58'),  // 3 minutes : rien
+      ],
+      mois: '2026-09',
+      creneaux: CRENEAUX,
+    });
+    expect(r.repas).toEqual({ midi: 1, soir: 0, horsPointe: 1, total: 2 });
   });
 
   it('découpe en semaines et ne mélange jamais deux semaines', () => {
@@ -282,13 +298,90 @@ describe('recapMensuel : contrat du mois', () => {
   });
 });
 
+// Jours d'absence tels que le Planning les enregistre (table schedule).
+const abs = (date, shift, autre = {}) => ({ employee_name: 'Salarié A', date, shift, ...autre });
+
+describe('recapMensuel : base mensualisée et absences du planning (décision JC du 24/10/2026)', () => {
+  it('donne la base mensualisée payée : horaire hebdo × 52 / 12', () => {
+    const r = recapMensuel({ salarie: SALARIE, presences: [], mois: '2026-10', creneaux: CRENEAUX });
+    expect(r.baseMensualisee).toBe(104);
+    const r35 = recapMensuel({ salarie: { ...SALARIE, heures_hebdo: 35 }, presences: [], mois: '2026-10', creneaux: CRENEAUX });
+    expect(r35.baseMensualisee).toBe(151.67);
+  });
+  it('l’écart reste calculé sur les semaines du mois, pas sur la base mensualisée', () => {
+    const r = recapMensuel({ salarie: SALARIE, presences: [], mois: '2026-10', creneaux: CRENEAUX });
+    expect(r.ecartContratHeures).toBe(-96); // 4 semaines × 24 h, et non -104
+  });
+  it('une semaine de congés (5 jours) est retirée du contrat', () => {
+    const r = recapMensuel({
+      salarie: SALARIE, presences: [], mois: '2026-10', creneaux: CRENEAUX,
+      absences: ['2026-10-12', '2026-10-13', '2026-10-14', '2026-10-15', '2026-10-16'].map((d) => abs(d, 'conges')),
+    });
+    expect(r.absences).toEqual({ conges: 5, maladie: 0, injustifiees: 0 });
+    expect(r.heuresAbsencesJustifiees).toBe(24); // 5 jours × 24 h / 5
+    expect(r.ecartContratHeures).toBe(-(96 - 24));
+  });
+  it('maladie retirée du contrat, absence injustifiée comptée mais NON retirée', () => {
+    const r = recapMensuel({
+      salarie: SALARIE, presences: [], mois: '2026-10', creneaux: CRENEAUX,
+      absences: [abs('2026-10-05', 'maladie'), abs('2026-10-06', 'maladie'), abs('2026-10-07', 'absence')],
+    });
+    expect(r.absences).toEqual({ conges: 0, maladie: 2, injustifiees: 1 });
+    expect(r.heuresAbsencesJustifiees).toBe(9.6);
+    expect(r.ecartContratHeures).toBe(-86.4);
+  });
+  it('une semaine entière marquée (7 jours) ne retire jamais plus que le contrat de la semaine', () => {
+    const r = recapMensuel({
+      salarie: SALARIE, presences: [], mois: '2026-10', creneaux: CRENEAUX,
+      absences: ['12', '13', '14', '15', '16', '17', '18'].map((j) => abs(`2026-10-${j}`, 'conges')),
+    });
+    expect(r.absences.conges).toBe(7);
+    expect(r.heuresAbsencesJustifiees).toBe(24);
+  });
+  it('ignore les absences d’une semaine rattachée à un autre mois, et celles d’un autre salarié', () => {
+    const r = recapMensuel({
+      salarie: SALARIE, presences: [], mois: '2026-10', creneaux: CRENEAUX,
+      absences: [
+        abs('2026-10-27', 'conges'), // semaine du 26/10, rattachée à novembre
+        abs('2026-10-13', 'conges', { employee_name: 'Salarié B' }),
+        abs('2026-10-14', 'conges', { employee_id: 'emp-b', employee_name: 'Salarié A' }),
+      ],
+    });
+    expect(r.absences).toEqual({ conges: 0, maladie: 0, injustifiees: 0 });
+    expect(r.heuresAbsencesJustifiees).toBe(0);
+  });
+  it('reconnaît le salarié par son identifiant quand le planning le porte', () => {
+    const r = recapMensuel({
+      salarie: SALARIE, presences: [], mois: '2026-10', creneaux: CRENEAUX,
+      absences: [abs('2026-10-13', 'maladie', { employee_id: 'emp-a', employee_name: 'Ancien nom' })],
+    });
+    expect(r.absences.maladie).toBe(1);
+  });
+  it('un même jour saisi deux fois compte une fois ; l’ancienne valeur « conge » vaut congés', () => {
+    const r = recapMensuel({
+      salarie: SALARIE, presences: [], mois: '2026-10', creneaux: CRENEAUX,
+      absences: [abs('2026-10-13', 'conge'), abs('2026-10-13', 'conge'), abs('2026-10-14', 'midi')],
+    });
+    expect(r.absences).toEqual({ conges: 1, maladie: 0, injustifiees: 0 });
+  });
+  it('ignore les absences des semaines hors contrat (avant l’entrée)', () => {
+    const r = recapMensuel({
+      salarie: { ...SALARIE, date_entree: '2026-10-20' }, presences: [], mois: '2026-10', creneaux: CRENEAUX,
+      absences: [abs('2026-10-13', 'conges')],
+    });
+    expect(r.absences.conges).toBe(0);
+    expect(r.ecartContratHeures).toBe(-24);
+  });
+});
+
 describe('export comptable', () => {
   const recap = {
     salarie: { name: 'Salarié A', heures_hebdo: 24 },
     mois: '2026-09',
     heuresTotales: 9.5, heuresPointees: 9.5, heuresDeclarees: 0,
     qualite: { anomalies: 0, tauxFiabilite: 100 },
-    repas: { midi: 2, soir: 1, total: 3 },
+    repas: { midi: 2, soir: 1, horsPointe: 1, total: 4 },
+    absences: { conges: 3, maladie: 1, injustifiees: 2 },
     semaines: [{ cle: '2026-W39', heures: 9.5, supplementaires: 0, complementaires: 0 }],
   };
 
@@ -297,7 +390,11 @@ describe('export comptable', () => {
     expect(ligne.salarie).toBe('Salarié A');
     expect(ligne.heuresTotales).toBe(9.5);
     expect(ligne.heuresComplementaires).toBe(0);
-    expect(ligne.repasTotal).toBe(3);
+    expect(ligne.repasHorsPointe).toBe(1);
+    expect(ligne.repasTotal).toBe(4);
+    expect(ligne.joursConges).toBe(3);
+    expect(ligne.joursMaladie).toBe(1);
+    expect(ligne.joursAbsenceInjustifiee).toBe(2);
     expect(ligne.anomalies).toBe(0);
   });
 
@@ -319,7 +416,9 @@ describe('export comptable', () => {
     expect(csv.split('\n')[0]).toContain('Salarié;Heures totales');
     expect(csv.split('\n')[1]).toContain('9,5');
     expect(csv.split('\n')[1]).not.toContain('9.5');
-    expect(csv.split('\n')[1].split(';')).toHaveLength(12);
+    expect(csv.split('\n')[1].split(';')).toHaveLength(16);
+    expect(csv.split('\n')[0]).toContain('Congés (jours);Maladie (jours);Absences injustifiées (jours)');
+    expect(csv.split('\n')[0]).toContain('Repas soir;Repas hors pointe (5 h);Repas total');
   });
 
   describe('échappement CSV et injection de formule', () => {
@@ -365,5 +464,40 @@ describe('export comptable', () => {
     it('ne touche pas aux nombres', () => {
       expect(csvPour('Salarié A').split('\n')[1]).toContain('9,5');
     });
+  });
+});
+
+describe('fenetreChargement', () => {
+  it('élargit le mois de 7 jours de chaque côté, pour les semaines à cheval', () => {
+    expect(fenetreChargement('2026-10')).toEqual({ debut: '2026-09-24', fin: '2026-11-07' });
+  });
+  it('passe correctement d’une année à l’autre', () => {
+    expect(fenetreChargement('2026-01')).toEqual({ debut: '2025-12-25', fin: '2026-02-07' });
+    expect(fenetreChargement('2026-12')).toEqual({ debut: '2026-11-24', fin: '2027-01-07' });
+  });
+  it('refuse un mois invalide', () => {
+    expect(fenetreChargement('2026-13')).toBeNull();
+    expect(fenetreChargement('octobre')).toBeNull();
+    expect(fenetreChargement(null)).toBeNull();
+  });
+});
+
+describe('salariesDuRecap : qui entre dans le récap du mois', () => {
+  const actif = { id: 'emp-a', name: 'Salarié A', active: true };
+  const parti = { id: 'emp-b', name: 'Salarié B', active: false };
+  const partiSansRien = { id: 'emp-c', name: 'Salarié C', active: false };
+
+  it('garde les actifs, écarte un ancien salarié sans activité dans le mois', () => {
+    expect(salariesDuRecap([actif, partiSansRien], [], []).map((e) => e.id)).toEqual(['emp-a']);
+  });
+  it('garde un ancien salarié qui a pointé dans le mois', () => {
+    const r = salariesDuRecap([parti], [{ employee_id: 'emp-b' }], []);
+    expect(r.map((e) => e.id)).toEqual(['emp-b']);
+  });
+  it('garde un ancien salarié dont une absence est posée au planning ce mois-là (cas réel de mai 2026)', () => {
+    expect(salariesDuRecap([parti], [], [{ employee_name: 'Salarié B', date: '2026-05-04', shift: 'maladie' }])
+      .map((e) => e.id)).toEqual(['emp-b']);
+    expect(salariesDuRecap([parti], [], [{ employee_id: 'emp-b', employee_name: 'Autre', date: '2026-05-04', shift: 'maladie' }])
+      .map((e) => e.id)).toEqual(['emp-b']);
   });
 });

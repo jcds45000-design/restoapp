@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { findUserIndexByEmail, issueSuppressionSalarie, estActif, visibleSurPeriode, dateFinParDefaut, anciensSalaries } from './users';
+import { findUserIndexByEmail, issueSuppressionSalarie, estActif, visibleSurPeriode, dateFinParDefaut, anciensSalaries, codePinValide, codePinFaible, messageErreurPin } from './users';
 
 const users = [
   { name: 'Jean Claude', email: '' },
@@ -90,5 +90,63 @@ describe('anciensSalaries', () => {
       { name: 'Salarié D', active: false, dateFin: '2026-09-30' },
     ];
     expect(anciensSalaries(liste).map(e => e.name)).toEqual(['Salarié D', 'Salarié B', 'Salarié C']);
+  });
+});
+
+// ─── Code de pointage (PIN) ───────────────────────────────────────
+// Le contrat vient de definir_pin() (migration 10) : 4 à 6 chiffres, unique sur
+// TOUS les salariés, jamais relu. La borne accepte la même longueur.
+
+describe('codePinValide', () => {
+  it('accepte 4, 5 ou 6 chiffres', () => {
+    expect(codePinValide('1234')).toBe(true);
+    expect(codePinValide('12345')).toBe(true);
+    expect(codePinValide('123456')).toBe(true);
+  });
+  it('refuse trop court ou trop long, comme la fonction SQL', () => {
+    expect(codePinValide('123')).toBe(false);
+    expect(codePinValide('1234567')).toBe(false);
+  });
+  it('refuse tout ce qui n’est pas uniquement des chiffres', () => {
+    expect(codePinValide('12a4')).toBe(false);
+    expect(codePinValide('12 34')).toBe(false);
+    expect(codePinValide(' 1234')).toBe(false);
+    expect(codePinValide('')).toBe(false);
+    expect(codePinValide(null)).toBe(false);
+    expect(codePinValide(undefined)).toBe(false);
+  });
+});
+
+describe('codePinFaible', () => {
+  it('signale un code devinable : chiffre répété ou suite', () => {
+    expect(codePinFaible('0000')).toBe(true);
+    expect(codePinFaible('1111')).toBe(true);
+    expect(codePinFaible('1234')).toBe(true);
+    expect(codePinFaible('123456')).toBe(true);
+    expect(codePinFaible('4321')).toBe(true);
+  });
+  it('laisse passer un code ordinaire', () => {
+    expect(codePinFaible('2706')).toBe(false);
+    expect(codePinFaible('9184')).toBe(false);
+    expect(codePinFaible('100200')).toBe(false);
+  });
+  it('ne juge pas un code invalide : ce n’est pas son rôle', () => {
+    expect(codePinFaible('12')).toBe(false);
+    expect(codePinFaible(null)).toBe(false);
+  });
+});
+
+describe('messageErreurPin', () => {
+  it('traduit chaque refus de definir_pin()', () => {
+    expect(messageErreurPin('le code doit faire 4 a 6 chiffres')).toMatch(/4 à 6 chiffres/);
+    expect(messageErreurPin('ce code est deja utilise')).toMatch(/déjà utilisé/);
+    expect(messageErreurPin('non autorise')).toMatch(/gérant/);
+    expect(messageErreurPin('salarie inconnu')).toMatch(/fiche/i);
+  });
+  it('n’affiche jamais le message technique brut', () => {
+    const brut = 'duplicate key value violates unique constraint "employees_pkey"';
+    expect(messageErreurPin(brut)).not.toContain('constraint');
+    expect(messageErreurPin(brut)).toMatch(/pas pu être enregistré/);
+    expect(messageErreurPin()).toMatch(/pas pu être enregistré/);
   });
 });

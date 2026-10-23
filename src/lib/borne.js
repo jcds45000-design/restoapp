@@ -136,3 +136,31 @@ export function messageRegularisation(data, oubli) {
   }
   return { ok: false, texte: messageErreurBorne() };
 }
+
+// ─── Déclaration d'une tablette comme borne ───────────────────────
+// Le jeton est le secret qui autorise une tablette à pointer. La base n'en garde
+// qu'une empreinte (bcrypt) : il ne vit qu'ici, dans le stockage local de l'appareil.
+
+/** Clé du stockage local où la tablette garde son jeton de borne. */
+export const CLE_JETON = 'kimiko_borne_jeton';
+
+/** Jeton aléatoire de 64 caractères hexadécimaux, bien au-delà des 32 exigés par le SQL. */
+export function genererJeton(source = globalThis.crypto) {
+  const octets = new Uint8Array(32);
+  source.getRandomValues(octets);
+  return [...octets].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/** Longueur minimale imposée par enregistrer_appareil(). */
+export function jetonValide(jeton) {
+  return typeof jeton === 'string' && jeton.length >= 32;
+}
+
+/** Refus de enregistrer_appareil() traduit pour le gérant, jamais le message brut. */
+export function messageErreurAppareil(brut = '') {
+  const m = String(brut || '');
+  if (m.includes('jeton trop court')) return 'Le jeton de la borne est trop court : relance la déclaration.';
+  if (m.includes('lieu inconnu ou ferme')) return 'Ce lieu est inconnu ou fermé. Choisis un lieu ouvert.';
+  if (m.includes('non autorise')) return 'Seul le gérant peut déclarer une borne.';
+  return 'La borne n’a pas pu être déclarée. Réessaie.';
+}

@@ -112,6 +112,34 @@ function contratValide(v) {
 }
 
 const enHeures = (minutes) => Math.round((minutes / 60) * 100) / 100;
+const arrondi = (h) => Math.round(h * 100) / 100;
+
+// Absences telles que le Planning les enregistre (table schedule, colonne shift).
+// « conge » est l'ancienne valeur du schéma d'origine.
+const TYPES_ABSENCE = { conges: 'conges', conge: 'conges', maladie: 'maladie', absence: 'injustifiees' };
+// Une journée d'absence justifiée vaut l'horaire hebdomadaire divisé par ce nombre de jours.
+// 5 = jours ouvrés. À confirmer avec le comptable (ouvrables : 6).
+const JOURS_TRAVAILLES_PAR_SEMAINE = 5;
+
+function lundiDe(jour) {
+  const d = dateValide(jour);
+  if (!d) return null;
+  return iso(new Date(d.getTime() - ((d.getUTCDay() + 6) % 7) * JOUR_MS));
+}
+
+// Le planning récent ne porte que le nom ; l'identifiant, quand il est là, fait foi.
+function absenceDuSalarie(a, salarie) {
+  return a?.employee_id ? a.employee_id === salarie.id : a?.employee_name === salarie.name;
+}
+
+// Salariés à faire figurer dans le récap : les actifs, plus tout ancien salarié qui a pointé
+// ou dont une absence est posée au planning sur la période chargée. Sans ce dernier cas,
+// un mois passé perdrait les absences des salariés partis depuis (constaté sur mai 2026).
+export function salariesDuRecap(employees = [], presences = [], absences = []) {
+  const aPointe = new Set(presences.map((p) => p.employee_id));
+  return employees.filter((e) => e.active !== false || aPointe.has(e.id)
+    || absences.some((a) => TYPES_ABSENCE[a?.shift] && absenceDuSalarie(a, e)));
+}
 
 // Récap d'un salarié pour un mois (format 'AAAA-MM'), prêt pour le comptable.
 // ATTENTION : le mois ne filtre PAS sur le jour calendaire, mais sur le MOIS DE
@@ -119,7 +147,7 @@ const enHeures = (minutes) => Math.round((minutes / 60) * 100) / 100;
 // tronquée à deux jours dans le récap de septembre, et ses heures supplémentaires
 // calculées sur une semaine incomplète, donc sous-estimées (spec §6.2).
 export function recapMensuel({
-  salarie, presences = [], mois, creneaux, regleSemaine = 'mois_fin',
+  salarie, presences = [], mois, creneaux, regleSemaine = 'mois_fin', absences = [],
 }) {
   if (!contratValide(salarie?.heures_hebdo)) {
     throw new Error('contrat manquant ou invalide pour '
@@ -135,11 +163,13 @@ export function recapMensuel({
   const parJour = grouperPar(duMois, (p) => p.jour);
   let repasMidi = 0;
   let repasSoir = 0;
+  let repasHorsPointe = 0;
   const jours = [];
   for (const [jour, presencesDuJour] of [...parJour.entries()].sort()) {
     const repas = repasDuJour(presencesDuJour, creneaux);
     repasMidi += repas.midi;
     repasSoir += repas.soir;
+    repasHorsPointe += repas.horsPointe;
     jours.push({
       jour,
       presences: presencesDuJour,
@@ -169,6 +199,30 @@ export function recapMensuel({
     Number(salarie.heures_hebdo) * semainesContrat.length * 60,
   );
 
+  // Absences posées au planning, sur les seules semaines sous contrat du mois.
+  // Un jour saisi deux fois ne compte qu'une fois.
+  const lundisContrat = new Set(semainesContrat);
+  const typeParJour = new Map();
+  for (const a of absences) {
+    const type = TYPES_ABSENCE[a?.shift];
+    if (!type || !absenceDuSalarie(a, salarie) || !lundisContrat.has(lundiDe(a.date))) continue;
+    typeParJour.set(a.date, type);
+  }
+  const compteAbsences = { conges: 0, maladie: 0, injustifiees: 0 };
+  const joursJustifiesParSemaine = new Map();
+  for (const [jour, type] of typeParJour) {
+    compteAbsences[type] += 1;
+    if (type === 'injustifiees') continue;
+    const lundi = lundiDe(jour);
+    joursJustifiesParSemaine.set(lundi, (joursJustifiesParSemaine.get(lundi) || 0) + 1);
+  }
+  // Congés et maladie sont retirés du contrat, jamais plus que le contrat de la semaine.
+  // L'absence injustifiée n'est pas retirée : c'est un vrai manque d'heures.
+  const hebdo = Number(salarie.heures_hebdo);
+  const heuresAbsencesJustifiees = arrondi([...joursJustifiesParSemaine.values()].reduce(
+    (t, n) => t + Math.min(hebdo, (n * hebdo) / JOURS_TRAVAILLES_PAR_SEMAINE), 0,
+  ));
+
   return {
     salarie,
     mois,
@@ -178,13 +232,21 @@ export function recapMensuel({
     heuresPointees: enHeures(qualite.minutesPointees),
     heuresDeclarees: enHeures(qualite.minutesDeclarees),
     qualite,
-    repas: { midi: repasMidi, soir: repasSoir, total: repasMidi + repasSoir },
+    repas: {
+      midi: repasMidi, soir: repasSoir, horsPointe: repasHorsPointe,
+      total: repasMidi + repasSoir + repasHorsPointe,
+    },
     anomalies: duMois.filter(estAnomalie),
     // Écart au CONTRAT, pas au planning : le planning n'est pas tenu à l'avance,
     // le comptable ne doit pas voir d'écarts imaginaires (spec §6, décision).
     heuresContractuellesMois,
-    // Lot 1 : l'écart inclut les absences justifiées (congés, arrêts), que le lot 1 ne connaît pas (spec §2).
-    ecartContratHeures: Math.round((heuresTotales - heuresContractuellesMois) * 100) / 100,
+    // Salariés mensualisés : horaire hebdo × 52 / 12, c'est la base PAYÉE. Elle est affichée
+    // mais ne sert pas à l'écart : comparée à des semaines entières (4 ou 5 par mois), elle
+    // produirait chaque mois un faux écart (décision JC du 24/10/2026, option A).
+    baseMensualisee: arrondi((hebdo * 52) / 12),
+    absences: compteAbsences,
+    heuresAbsencesJustifiees,
+    ecartContratHeures: arrondi(heuresTotales - (heuresContractuellesMois - heuresAbsencesJustifiees)),
   };
 }
 
@@ -209,7 +271,11 @@ export function lignesExport(recaps = []) {
     ) / 100,
     repasMidi: r.repas.midi,
     repasSoir: r.repas.soir,
+    repasHorsPointe: r.repas.horsPointe ?? 0,
     repasTotal: r.repas.total,
+    joursConges: r.absences?.conges ?? 0,
+    joursMaladie: r.absences?.maladie ?? 0,
+    joursAbsenceInjustifiee: r.absences?.injustifiees ?? 0,
     anomalies: r.qualite.anomalies,
     fiabilitePct: r.qualite.tauxFiabilite,
   }));
@@ -223,7 +289,11 @@ const COLONNES = [
   ['heuresComplementaires', 'Heures complémentaires'],
   ['repasMidi', 'Repas midi'],
   ['repasSoir', 'Repas soir'],
+  ['repasHorsPointe', 'Repas hors pointe (5 h)'],
   ['repasTotal', 'Repas total'],
+  ['joursConges', 'Congés (jours)'],
+  ['joursMaladie', 'Maladie (jours)'],
+  ['joursAbsenceInjustifiee', 'Absences injustifiées (jours)'],
   ['heuresPointees', 'dont pointées'],
   ['heuresDeclarees', 'dont déclarées après coup'],
   ['anomalies', 'Anomalies non résolues'],
@@ -244,4 +314,19 @@ export function versCSV(lignes = []) {
   const entete = COLONNES.map(([, libelle]) => libelle).join(';');
   const corps = lignes.map((l) => COLONNES.map(([cle]) => format(l[cle])).join(';'));
   return [entete, ...corps].join('\n');
+}
+
+// Fenêtre de lecture des présences pour un mois de récap. Le récap rattache une semaine
+// entière au mois qui la porte : il faut donc charger un peu avant et un peu après le
+// mois civil, sinon la semaine à cheval arriverait tronquée et ses heures
+// supplémentaires seraient sous-estimées. Sept jours suffisent des deux côtés.
+export function fenetreChargement(mois) {
+  if (typeof mois !== 'string' || !/^\d{4}-(0[1-9]|1[0-2])$/.test(mois)) return null;
+  const [an, m] = mois.split('-').map(Number);
+  const premier = Date.UTC(an, m - 1, 1);
+  const dernier = Date.UTC(an, m, 0);
+  return {
+    debut: iso(new Date(premier - 7 * JOUR_MS)),
+    fin: iso(new Date(dernier + 7 * JOUR_MS)),
+  };
 }

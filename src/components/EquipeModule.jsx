@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase';
 import { I } from '../lib/icons';
 import { TODAY, fmt, F, Badge } from '../lib/foundation';
 import { ROLE_LABELS } from '../lib/permissions';
-import { issueSuppressionSalarie, estActif, dateFinParDefaut, anciensSalaries } from '../lib/users';
+import { issueSuppressionSalarie, estActif, dateFinParDefaut, anciensSalaries, codePinValide, codePinFaible, messageErreurPin } from '../lib/users';
 
 // migrationActive : vrai quand la migration 7 (rôles/permissions) est appliquée en base ;
 // le sélecteur de rôle applicatif n'apparaît qu'à ce moment-là.
@@ -12,6 +12,10 @@ const EquipeModule = ({ t, employees, setUsersData, isMobile, migrationActive = 
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingEmp, setEditingEmp] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  // Code de pointage de la borne : saisi ici, jamais relu ensuite (definir_pin, migration 10).
+  const [ePin, setEPin] = useState("");
+  const [ePinMsg, setEPinMsg] = useState(null);
+  const [ePinEnCours, setEPinEnCours] = useState(false);
   const [finContrat, setFinContrat] = useState(false);
   const [finDate, setFinDate] = useState(TODAY);
   const [voirAnciens, setVoirAnciens] = useState(false);
@@ -97,6 +101,21 @@ const EquipeModule = ({ t, employees, setUsersData, isMobile, migrationActive = 
       }
     }
     setEditingEmp(null); setECreateAccount(false); setEPassword(""); setEAccountMsg(null);
+  };
+
+  // Attribution du code de pointage. Le code n'est lisible qu'ici, une seule fois :
+  // la base n'en garde qu'une empreinte. En cas d'oubli, on en attribue un autre.
+  const definirCodePointage = async () => {
+    if (!editingEmp?._uuid || !codePinValide(ePin) || ePinEnCours) return;
+    setEPinEnCours(true);
+    setEPinMsg(null);
+    const { error } = await supabase.rpc('definir_pin', { p_employee: editingEmp._uuid, p_pin: ePin });
+    setEPinEnCours(false);
+    if (error) { setEPinMsg({ ok: false, msg: messageErreurPin(error.message) }); return; }
+    setEPinMsg({ ok: true, msg: `Code ${ePin} enregistré pour ${editingEmp.name}. Note-le et donne-le lui : il ne sera plus jamais affiché.` });
+    setUsersData(prev => prev.map(u => u.id === editingEmp.id ? { ...u, aUnCode: true } : u));
+    setEditingEmp(prev => (prev ? { ...prev, aUnCode: true } : prev));
+    setEPin("");
   };
 
   const deleteEmp = async () => {
@@ -355,11 +374,11 @@ const EquipeModule = ({ t, employees, setUsersData, isMobile, migrationActive = 
 
       {/* Edit modal */}
       {editingEmp && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={() => { setEditingEmp(null); setConfirmDelete(false); }}>
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={() => { setEditingEmp(null); setConfirmDelete(false); setEPin(""); setEPinMsg(null); }}>
           <div style={{ background: t.surface, borderRadius: 16, padding: 28, width: 480, maxWidth: "92vw", boxShadow: "0 20px 60px rgba(0,0,0,0.15)", maxHeight: "90vh", overflowY: "auto" }} onClick={e => e.stopPropagation()}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
               <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0, fontFamily: F }}>Modifier l'employé</h2>
-              <button onClick={() => { setEditingEmp(null); setConfirmDelete(false); }} style={{ background: "none", border: "none", cursor: "pointer", color: t.textMuted, padding: 4 }}>{I.x}</button>
+              <button onClick={() => { setEditingEmp(null); setConfirmDelete(false); setEPin(""); setEPinMsg(null); }} style={{ background: "none", border: "none", cursor: "pointer", color: t.textMuted, padding: 4 }}>{I.x}</button>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
@@ -406,6 +425,43 @@ const EquipeModule = ({ t, employees, setUsersData, isMobile, migrationActive = 
               {eAccountMsg && <div style={{ marginTop: 8, fontSize: 12, fontWeight: 500, color: eAccountMsg.ok ? t.success : t.danger, fontFamily: F }}>{eAccountMsg.msg}</div>}
             </div>
 
+            {/* Code de pointage sur la borne */}
+            <div style={{ borderTop: `1px solid ${t.border}`, paddingTop: 14, marginTop: 14 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: t.text, fontFamily: F, marginBottom: 6 }}>Code de pointage sur la borne</div>
+              {!editingEmp._uuid ? (
+                <div style={{ fontSize: 12, color: t.textMuted, fontFamily: F, lineHeight: 1.45 }}>Cette fiche n’est pas enregistrée en base : elle ne peut pas recevoir de code.</div>
+              ) : (
+                <>
+                  <div style={{ fontSize: 12, color: editingEmp.aUnCode ? t.textMuted : t.warning, fontFamily: F, marginBottom: 10, lineHeight: 1.45 }}>
+                    {editingEmp.aUnCode
+                      ? `${editingEmp.name} a déjà un code. En saisir un nouveau remplace l’ancien.`
+                      : `${editingEmp.name} n’a pas encore de code : sans code, impossible de pointer sur la borne.`}
+                  </div>
+                  <div style={{ display: "flex", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
+                    <input
+                      value={ePin}
+                      onChange={e => { setEPin(e.target.value.replace(/\D/g, '').slice(0, 6)); setEPinMsg(null); }}
+                      inputMode="numeric"
+                      autoComplete="off"
+                      placeholder="4 à 6 chiffres"
+                      aria-label="Nouveau code de pointage"
+                      style={{ ...sel, width: 150, letterSpacing: 3, fontWeight: 600 }}
+                    />
+                    <button
+                      onClick={definirCodePointage}
+                      disabled={!codePinValide(ePin) || ePinEnCours}
+                      style={{ padding: "10px 16px", borderRadius: 8, border: "none", background: codePinValide(ePin) && !ePinEnCours ? t.primary : t.border, color: codePinValide(ePin) && !ePinEnCours ? "#fff" : t.textMuted, fontSize: 14, fontWeight: 600, cursor: codePinValide(ePin) && !ePinEnCours ? "pointer" : "default", fontFamily: F }}
+                    >{ePinEnCours ? "Enregistrement…" : "Enregistrer le code"}</button>
+                  </div>
+                  {codePinFaible(ePin) && (
+                    <div style={{ marginTop: 8, fontSize: 12, fontWeight: 500, color: t.warning, fontFamily: F, lineHeight: 1.45 }}>Ce code est facile à deviner : un collègue pourrait pointer à la place de {editingEmp.name}. Tu peux quand même l’enregistrer.</div>
+                  )}
+                  <div style={{ marginTop: 8, fontSize: 12, color: t.textMuted, fontFamily: F, lineHeight: 1.45 }}>Le code n’est jamais relu ensuite, même par toi : en cas d’oubli, attribue-en un nouveau. Il doit être différent de celui de tous les autres salariés, y compris les anciens.</div>
+                  {ePinMsg && <div style={{ marginTop: 8, fontSize: 12, fontWeight: 600, color: ePinMsg.ok ? t.success : t.danger, fontFamily: F, lineHeight: 1.45 }}>{ePinMsg.msg}</div>}
+                </>
+              )}
+            </div>
+
             {finContrat && (
               <div style={{ marginTop: 16, padding: 14, borderRadius: 10, background: t.warning + "10", border: `1px solid ${t.warning}40` }}>
                 <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 6, fontFamily: F }}>Fin de contrat de {editingEmp.name}</div>
@@ -431,7 +487,7 @@ const EquipeModule = ({ t, employees, setUsersData, isMobile, migrationActive = 
               )}
               </div>
               <div style={{ display: "flex", gap: 10, marginLeft: "auto" }}>
-              <button onClick={() => { setEditingEmp(null); setConfirmDelete(false); setFinContrat(false); setECreateAccount(false); setEPassword(""); setEAccountMsg(null); }} style={{ padding: "10px 16px", borderRadius: 8, border: `1px solid ${t.border}`, background: t.surface, color: t.textMuted, fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: F }}>Annuler</button>
+              <button onClick={() => { setEditingEmp(null); setConfirmDelete(false); setFinContrat(false); setECreateAccount(false); setEPassword(""); setEAccountMsg(null); setEPin(""); setEPinMsg(null); }} style={{ padding: "10px 16px", borderRadius: 8, border: `1px solid ${t.border}`, background: t.surface, color: t.textMuted, fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: F }}>Annuler</button>
               <button onClick={saveEdit} style={{ padding: "10px 16px", borderRadius: 8, border: "none", background: eName.trim() ? t.primary : t.border, color: eName.trim() ? "#fff" : t.textMuted, fontSize: 14, fontWeight: 600, cursor: eName.trim() ? "pointer" : "default", fontFamily: F }}>Enregistrer</button>
               </div>
             </div>

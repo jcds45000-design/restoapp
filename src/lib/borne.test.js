@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { libelleBouton, dureeLisible, minutesDepuis, heureParis, messagePointage, messageErreurBorne, jourParis, departDeclare, messageRegularisation } from './borne';
+import { libelleBouton, dureeLisible, minutesDepuis, heureParis, messagePointage, messageErreurBorne, jourParis, departDeclare, messageRegularisation, genererJeton, jetonValide, messageErreurAppareil } from './borne';
 
 describe('libelleBouton', () => {
   it('propose ARRIVÉE quand le salarié n’est pas en poste', () => {
@@ -146,5 +146,46 @@ describe('messageRegularisation', () => {
   it('ne prétend jamais avoir régularisé sur une réponse inattendue', () => {
     expect(messageRegularisation(null, oubli).ok).toBe(false);
     expect(messageRegularisation({ action: 'autre' }, oubli).ok).toBe(false);
+  });
+});
+
+// ─── Déclaration d'une tablette comme borne ───────────────────────
+// enregistrer_appareil() (migrations 10 et 10c) exige un jeton d'au moins 32 caractères
+// et un lieu ouvert. Le jeton n'est stocké qu'en empreinte : il reste sur la tablette.
+
+describe('genererJeton', () => {
+  it('produit 64 caractères hexadécimaux', () => {
+    const j = genererJeton();
+    expect(j).toMatch(/^[0-9a-f]{64}$/);
+  });
+  it('ne produit pas deux fois le même jeton', () => {
+    expect(genererJeton()).not.toBe(genererJeton());
+  });
+  it('utilise la source d’aléa fournie', () => {
+    const sourceNulle = { getRandomValues: (o) => o.fill(0) };
+    expect(genererJeton(sourceNulle)).toBe('0'.repeat(64));
+  });
+});
+
+describe('jetonValide', () => {
+  it('exige au moins 32 caractères, comme la fonction SQL', () => {
+    expect(jetonValide('a'.repeat(32))).toBe(true);
+    expect(jetonValide('a'.repeat(31))).toBe(false);
+    expect(jetonValide('')).toBe(false);
+    expect(jetonValide(null)).toBe(false);
+  });
+});
+
+describe('messageErreurAppareil', () => {
+  it('traduit chaque refus de enregistrer_appareil()', () => {
+    expect(messageErreurAppareil('jeton trop court')).toMatch(/jeton/i);
+    expect(messageErreurAppareil('lieu inconnu ou ferme')).toMatch(/lieu/i);
+    expect(messageErreurAppareil('non autorise')).toMatch(/gérant/);
+  });
+  it('n’affiche jamais le message technique brut', () => {
+    const brut = 'permission denied for function enregistrer_appareil';
+    expect(messageErreurAppareil(brut)).not.toContain('permission denied');
+    expect(messageErreurAppareil(brut)).toMatch(/pas pu être déclarée/);
+    expect(messageErreurAppareil()).toMatch(/pas pu être déclarée/);
   });
 });
