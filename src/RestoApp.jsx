@@ -520,7 +520,7 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
             </select>
           </div>
           )}
-          <div style={{ flex: 1, padding: "16px 10px", display: "flex", flexDirection: "column", gap: 2 }}>
+          <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "16px 10px", display: "flex", flexDirection: "column", gap: 2 }}>{/* défile si la fenêtre est peu haute : sinon Paramètres sort de l'écran */}
             {navItems.map(item => (
               <button key={item.id} onClick={() => { setSection(item.id); if (item.id === "tasks") { setShowHistory(false); setViewDate(TODAY); } }} style={{
                 display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 8, border: "none", cursor: "pointer",

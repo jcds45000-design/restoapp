@@ -24,6 +24,8 @@ const HorairesPointageCard = ({ t, F }) => {
   const [chargement, setChargement] = useState(true);
   const [erreurChargement, setErreurChargement] = useState('');
   const [semaine, setSemaine] = useState(semaineVide);
+  // Heures d'un jour juste avant « Aucun service », pour pouvoir le rouvrir d'un clic.
+  const [avantFermeture, setAvantFermeture] = useState({});
   const [dateEffet, setDateEffet] = useState(aujourdhuiParis);
   const [tente, setTente] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -54,6 +56,7 @@ const HorairesPointageCard = ({ t, F }) => {
     const prochaine = vs.filter(v => v.statut === 'a_venir').pop();
     const base = enVigueur || prochaine;
     setSemaine(base ? semaineDeVersion(toutes, id, base.date_effet) : semaineVide());
+    setAvantFermeture({});
     setDateEffet(enVigueur || !prochaine ? aujourdhuiParis() : prochaine.date_effet);
     setTente(false);
   }, []);
@@ -87,6 +90,15 @@ const HorairesPointageCard = ({ t, F }) => {
     setSemaine(s => s.map((j, k) => (k === i ? { ...j, [champ]: valeur } : j)));
     setMsg(null);
   };
+  const fermer = (i) => {
+    setAvantFermeture(a => ({ ...a, [i]: semaine[i] }));
+    vider(i, ['midi_debut', 'midi_fin', 'soir_debut', 'soir_fin', 'coupure_max', 'retour_soir']);
+  };
+  const rouvrir = (i) => {
+    setSemaine(s => s.map((j, k) => (k === i ? avantFermeture[i] : j)));
+    setAvantFermeture(a => { const reste = { ...a }; delete reste[i]; return reste; });
+    setMsg(null);
+  };
   const vider = (i, champs) => {
     setSemaine(s => s.map((j, k) => (k === i ? { ...j, ...Object.fromEntries(champs.map(c => [c, ''])) } : j)));
     setMsg(null);
@@ -109,6 +121,7 @@ const HorairesPointageCard = ({ t, F }) => {
 
   const reprendre = (v) => {
     setSemaine(semaineDeVersion(lignes, lieuId, v.date_effet));
+    setAvantFermeture({});
     setDateEffet(v.statut === 'a_venir' ? v.date_effet : aujourdhui);
     setTente(false); setMsg(null);
   };
@@ -173,7 +186,7 @@ const HorairesPointageCard = ({ t, F }) => {
     <div style={carte}>
       <h2 style={{ fontSize: 17, fontWeight: 700, margin: '0 0 6px', fontFamily: F }}>Horaires du pointage</h2>
       <p style={texteAide}>
-        <strong style={{ color: t.text }}>Midi et soir</strong> servent à compter les repas : un repas est compté si le salarié est présent pendant le service.{' '}
+        <strong style={{ color: t.text }}>Midi et soir</strong> : heures de service du lieu. Elles ne servent pas aux repas, qui se comptent sur les heures de pointe du pointage (voir l’écran Pointage).{' '}
         <strong style={{ color: t.text }}>Coupure</strong> : heure limite de départ après le midi, puis heure de retour pour le soir. Vers l’heure de retour, la borne demande à un salarié encore en poste s’il part ou s’il revient. Sans coupure, pas de question (journée continue).
       </p>
 
@@ -231,10 +244,15 @@ const HorairesPointageCard = ({ t, F }) => {
           <div key={j.jour_semaine} style={{ padding: etroit ? '10px 8px' : '10px 12px', borderRadius: 10, background: t.surfaceAlt, border: `1px solid ${t.border}` }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
               <span style={{ flex: 1, fontSize: 14, fontWeight: 700, color: t.text, fontFamily: F }}>{JOURS[i]}</span>
-              {estFerme(j) ? (
-                <span style={{ fontSize: 12, fontWeight: 600, color: t.textMuted, fontFamily: F }}>Pas de service</span>
+              {estFerme(j) && avantFermeture[i] ? (
+                <>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: t.textMuted, fontFamily: F }}>Pas de service</span>
+                  <button onClick={() => rouvrir(i)} style={{ ...btnSm, padding: '4px 10px', fontSize: 12, background: t.surface, color: t.text, border: `1px solid ${t.border}` }}>Rouvrir</button>
+                </>
+              ) : estFerme(j) ? (
+                <span style={{ fontSize: 12, fontWeight: 600, color: t.textMuted, fontFamily: F, textAlign: 'right' }}>Pas de service · saisis des heures pour l’ouvrir</span>
               ) : (
-                <button onClick={() => vider(i, ['midi_debut', 'midi_fin', 'soir_debut', 'soir_fin', 'coupure_max', 'retour_soir'])} style={{ ...btnSm, padding: '4px 10px', fontSize: 12, background: t.surface, color: t.textMuted, border: `1px solid ${t.border}` }}>Aucun service</button>
+                <button onClick={() => fermer(i)} style={{ ...btnSm, padding: '4px 10px', fontSize: 12, background: t.surface, color: t.textMuted, border: `1px solid ${t.border}` }}>Aucun service</button>
               )}
             </div>
             {LIGNES.map(r => (
