@@ -2,10 +2,40 @@ import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { SETTINGS_DEFAUT, couleurFoodCostMatiere, infoPrixIngredient, grouperLignesParRecette,
   prixConseille, arrondi10ctsSup, CANAUX, prixCanal, ttcVersHT } from '../lib/rentabilite.js';
-import { etatArticles, alertes as calculAlertes, dashboard as calculDashboard, simuler, recettesUtilisant } from '../lib/pilotage.js';
+import { etatArticles, etatCouts, alertes as calculAlertes, dashboard as calculDashboard, simuler, recettesUtilisant } from '../lib/pilotage.js';
+import { foodCostReel } from '../lib/foodCostVentes.js';
 
 const eur = (n, d = 2) => (n === null || n === undefined ? '—' : `${Number(n).toFixed(d)} €`);
 const pct = (n, d = 1) => (n === null || n === undefined ? '—' : `${Number(n).toFixed(d)} %`);
+const dateFr = (iso) => (iso ? iso.split('-').reverse().join('/') : '');
+
+// Supabase plafonne à 1000 lignes par requête : on pagine. Un mois ≈ 10 000
+// lignes de vente, soit une dizaine d'aller-retours.
+async function toutCharger(requete) {
+  const out = [];
+  for (let de = 0; ; de += 1000) {
+    const { data, error } = await requete().range(de, de + 999);
+    if (error) throw error;
+    out.push(...data);
+    if (data.length < 1000) return out;
+  }
+}
+
+async function chargerVentes() {
+  const [tickets, lignesV, mappings] = await Promise.all([
+    toutCharger(() => supabase.from('sales_tickets').select('id,date_service,reverse').order('id')),
+    toutCharger(() => supabase.from('sales_lines')
+      .select('ticket_id,abill_product_id,libelle,quantity,total_ttc,total_ht,exclu_ca,offert').order('id')),
+    toutCharger(() => supabase.from('abill_item_mapping').select('abill_product_id,cible_type,menu_item_id,recipe_id').order('abill_product_id')),
+  ]);
+  const extournes = new Set(tickets.filter((x) => x.reverse).map((x) => x.id));
+  const dates = tickets.filter((x) => !x.reverse).map((x) => x.date_service).sort();
+  return {
+    lignesVente: lignesV.filter((l) => !extournes.has(l.ticket_id)),
+    mappings,
+    periode: dates.length ? { debut: dates[0], fin: dates[dates.length - 1], nbTickets: dates.length } : null,
+  };
+}
 
 // Le feu tricolore du food cost matière. Seuils configurables en base.
 function Feu({ valeur, settings, t }) {
@@ -63,6 +93,8 @@ export default function PilotageCoutsModule({ t, products = [], productSuppliers
   const [erreur, setErreur] = useState('');
   const [onglet, setOnglet] = useState('dashboard');
   const [ouvert, setOuvert] = useState(null);
+  const [ventes, setVentes] = useState(null);
+  const [erreurVentes, setErreurVentes] = useState('');
 
   // Simulateur : modifications temporaires, jamais écrites en base.
   const [simIngredient, setSimIngredient] = useState('');
@@ -90,6 +122,11 @@ export default function PilotageCoutsModule({ t, products = [], productSuppliers
     })();
   }, []);
 
+  // Chargement séparé : une erreur sur les ventes ne doit pas casser le module.
+  useEffect(() => {
+    chargerVentes().then(setVentes).catch((e) => setErreurVentes(e.message));
+  }, []);
+
   const base = useMemo(() => ({
     produits: products, productSuppliers, recettes: recipes, lignes,
     packagings, menuItems, historique, settings, liensEmballage,
@@ -98,6 +135,12 @@ export default function PilotageCoutsModule({ t, products = [], productSuppliers
   const articles = useMemo(() => (chargement ? [] : etatArticles(base)), [base, chargement]);
   const alertes = useMemo(() => (chargement ? [] : calculAlertes(base)), [base, chargement]);
   const dash = useMemo(() => (chargement ? null : calculDashboard(base)), [base, chargement]);
+  const reel = useMemo(() => {
+    if (chargement || !ventes) return null;
+    const { parRecette } = etatCouts(base);
+    return foodCostReel({ lignesVente: ventes.lignesVente, mappings: ventes.mappings,
+      articles, parRecette, menuItems });
+  }, [chargement, ventes, base, articles, menuItems]);
   const lignesByRecette = useMemo(() => grouperLignesParRecette(lignes), [lignes]);
 
   // Ingrédients réellement utilisés en recette : les seuls qui ont un sens à simuler.
@@ -175,6 +218,38 @@ export default function PilotageCoutsModule({ t, products = [], productSuppliers
               <div style={{ fontSize: 12, color: t.textMuted }}>{critiques} critique(s)</div>
             </Carte>
           </div>
+
+          {erreurVentes && (
+            <Carte t={t}><div style={{ color: t.danger, fontSize: 13 }}>Ventes non chargées : {erreurVentes}</div></Carte>
+          )}
+          {reel && ventes?.periode && (
+            <Carte t={t}>
+              <div style={{ fontSize: 12, color: t.textMuted, fontWeight: 600 }}>
+                FOOD COST RÉEL (ventes du {dateFr(ventes.periode.debut)} au {dateFr(ventes.periode.fin)}, {ventes.periode.nbTickets} tickets)
+              </div>
+              <div style={{ fontSize: 30, fontWeight: 800, color: t.text, margin: '6px 0' }}>
+                {reel.foodCostPct === null ? '—' : pct(reel.foodCostPct)}
+              </div>
+              <div style={{ fontSize: 13, color: reel.couverturePct !== null && reel.couverturePct >= 95 ? t.textMuted : t.warning, fontWeight: 600 }}>
+                Coût connu pour {reel.couverturePct === null ? '0 %' : pct(reel.couverturePct)} du chiffre d’affaires HT
+                {(reel.couverturePct === null || reel.couverturePct < 95) && ' : chiffre à confirmer, finir le mapping des ventes'}
+              </div>
+              <div style={{ fontSize: 12, color: t.textMuted, marginTop: 6, lineHeight: 1.6 }}>
+                Options de menu à 0 € : {reel.optionsCouvertes} chiffrées, {reel.optionsNonMappees} à mapper, {reel.optionsSansCout} sans coût.
+                {' '}Articles payants : {reel.payantsNonMappes} à mapper, {reel.payantsSansCout} sans coût.
+              </div>
+              {reel.menusSansBase.length > 0 && (
+                <div style={{ fontSize: 12, color: t.textMuted, marginTop: 4 }}>
+                  Menus comptés sans base fixe (coût = options seules) : {reel.menusSansBase.map((m) => `${m.nom} (${m.quantite})`).join(', ')}.
+                </div>
+              )}
+              {reel.optionsAMapper.length > 0 && (
+                <div style={{ fontSize: 12, color: t.textMuted, marginTop: 4 }}>
+                  Options les plus vendues encore à mapper : {reel.optionsAMapper.slice(0, 8).map((o) => `${o.libelle} (${o.quantite})`).join(', ')}.
+                </div>
+              )}
+            </Carte>
+          )}
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(280px,1fr))', gap: 12 }}>
             <Carte t={t}>

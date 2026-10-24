@@ -2,7 +2,7 @@ import { useState, useRef, useMemo, useEffect, lazy, Suspense } from "react";
 import { supabase } from './lib/supabase';
 import { repartir } from './lib/taskDispatch';
 import { I } from './lib/icons';
-import { findUserIndexByEmail } from './lib/users';
+import { findUserIndexByEmail, estActif, visibleSurPeriode } from './lib/users';
 import { alertProductsOf } from './lib/stock';
 import { statutPresence, syntheseJour, PRESENCE_LABELS } from './lib/presence';
 import { classerTaches, badgeTaches, dateFenetre, titresManquants } from './lib/taches';
@@ -13,6 +13,7 @@ const RentabiliteCarteModule = lazy(() => import('./components/RentabiliteCarteM
 const PilotageCoutsModule = lazy(() => import('./components/PilotageCoutsModule'));
 const VentesModule = lazy(() => import('./components/VentesModule'));
 const EquipeModule = lazy(() => import('./components/EquipeModule'));
+const RecapPointageModule = lazy(() => import('./components/RecapPointageModule'));
 const PlanningModule = lazy(() => import('./components/PlanningModule'));
 const SemaineView = lazy(() => import('./components/SemaineView'));
 const TaskTemplatesModule = lazy(() => import('./components/TaskTemplatesModule'));
@@ -82,12 +83,16 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
   // affiché. Un gérant qui « voit en tant que » un employé voit bien la vue employé.
   const isGerant = realIsGerant && currentUser.role === "gerant";
   const employees = useMemo(() => usersData.filter(u => u.name !== "Jean Claude"), [usersData]);
+  // Attribution de nouvelles tâches : les anciens salariés ne sont plus proposés.
+  const employesActifs = useMemo(() => employees.filter(estActif), [employees]);
 
   const [section, setSection] = useState("dashboard");
   const [themeKey, setThemeKey] = useState(initialTheme || "kimiko");
   const [showThemePicker, setShowThemePicker] = useState(false);
   const [tasks, setTasks] = useState(initialTasks);
   const [schedule, setSchedule] = useState({});
+  // Accueil (équipe du jour) : un ancien reste visible le jour de son départ ou s'il est planifié.
+  const equipeDuJour = useMemo(() => employees.filter(e => visibleSurPeriode(e, TODAY, TODAY, schedule[e.name])), [employees, schedule]);
   const [products, setProducts] = useState(initialProducts);
   const [sorties, setSorties] = useState(initialSorties);
   const [suppliers, setSuppliers] = useState([]);
@@ -123,7 +128,7 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
     let noPlanning = false;
     if (!presents.length) {
       noPlanning = true;
-      presents = employees
+      presents = employesActifs
         .filter(u => !EXCLUS_REPARTITION.includes(u.name))
         .map(u => ({ name: u.name, isGerant: u.role === 'gerant', ouverture: true, fermeture: true }));
     }
@@ -289,7 +294,9 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
             dateEntree: e.date_entree || e.created_at?.slice(0, 10) || '',
             contrat: e.contrat || 'CDI',
             dateFin: e.date_fin || '',
+            aUnCode: Boolean(e.pin_hash), // a un code de pointage ; l'empreinte elle-meme n'est jamais affichee
             appRole: e.app_role || null, // rempli après migration 7
+            active: e.active !== false,
           })),
         ];
         setUsersData(merged);
@@ -310,7 +317,7 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
   }, []);
 
   // Statuts de présence (spec §5) : un salarié non planifié n'est JAMAIS « absent ».
-  const todayStaff = useMemo(() => employees.map(emp => {
+  const todayStaff = useMemo(() => equipeDuJour.map(emp => {
     const shift = schedule[emp.name]?.[TODAY];
     const statut = statutPresence(shift);
     return {
@@ -319,7 +326,7 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
       shift: statut === 'prevu' ? shift : PRESENCE_LABELS[statut],
       status: statut,
     };
-  }), [employees, schedule]);
+  }), [equipeDuJour, schedule]);
   const effectiveSection = (!isGerant && section === "dashboard") ? "tasks" : section;
   const effectiveDate = isGerant ? viewDate : TODAY;
   // Retards (spec §9) : seules les PONCTUELLES passées restent en retard ; les
@@ -468,6 +475,7 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
     { id: "tasks", label: "Tâches", icon: I.tasks, badge: empBadge },
     { id: "equipe", label: "Équipe", icon: I.users },
     { id: "planning", label: "Planning & RH", icon: I.calendar },
+    { id: "pointage", label: "Pointage", icon: I.clock },
     { id: "stocks", label: "Stocks", icon: I.box, badge: stockAlertCount + pendingSortiesCount },
     { id: "recettes", label: "Recettes", icon: I.box },
     { id: "rentabilite", label: "Rentabilité", icon: I.euro },
@@ -512,7 +520,7 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
             </select>
           </div>
           )}
-          <div style={{ flex: 1, padding: "16px 10px", display: "flex", flexDirection: "column", gap: 2 }}>
+          <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "16px 10px", display: "flex", flexDirection: "column", gap: 2 }}>{/* défile si la fenêtre est peu haute : sinon Paramètres sort de l'écran */}
             {navItems.map(item => (
               <button key={item.id} onClick={() => { setSection(item.id); if (item.id === "tasks") { setShowHistory(false); setViewDate(TODAY); } }} style={{
                 display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 8, border: "none", cursor: "pointer",
@@ -598,6 +606,11 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
           <Suspense fallback={<Loading />}><EquipeModule t={t} employees={employees} usersData={usersData} setUsersData={setUsersData} isMobile={isMobile} migrationActive={migrationActive} /></Suspense>
         )}
 
+        {/* POINTAGE : ce que la borne a enregistre + recap mensuel (gerant seul) */}
+        {effectiveSection === "pointage" && isGerant && (
+          <Suspense fallback={<Loading />}><RecapPointageModule t={t} /></Suspense>
+        )}
+
         {/* PLANNING */}
         {effectiveSection === "planning" && (
           <Suspense fallback={<Loading />}><PlanningModule t={t} schedule={schedule} setSchedule={setSchedule} pointage={initialPointage} isGerant={isGerant} currentUserName={currentUser.name} employees={employees} /></Suspense>
@@ -621,7 +634,7 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
 
             <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr", gap: isMobile ? 10 : 16, marginBottom: isMobile ? 16 : 28 }}>
               {(() => {
-                const synth = syntheseJour(employees, schedule, TODAY);
+                const synth = syntheseJour(equipeDuJour, schedule, TODAY);
                 let subTxt, color;
                 if (synth.aucunPlanning) {
                   subTxt = 'Aucun planning saisi pour aujourd\'hui';
@@ -687,7 +700,7 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
         )}
 
         {/* Placeholder */}
-        {!["dashboard", "tasks", "planning", "stocks", "recettes", "rentabilite", "couts", "ventes", "finances", "equipe", "settings"].includes(effectiveSection) && (
+        {!["dashboard", "tasks", "planning", "pointage", "stocks", "recettes", "rentabilite", "couts", "ventes", "finances", "equipe", "settings"].includes(effectiveSection) && (
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "60vh", color: t.textMuted }}>
             <div style={{ fontSize: 48, marginBottom: 16, opacity: 0.3 }}>🚧</div>
             <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 4 }}>Module « {navItems.find(n => n.id === effectiveSection)?.label || effectiveSection} »</div>
@@ -719,7 +732,7 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
       {isMobile && showMobileMenu && (
         <div style={{ position: "fixed", bottom: 60, left: 0, right: 0, background: t.surface, borderTop: `1px solid ${t.border}`, padding: "12px 16px", zIndex: 899, boxShadow: "0 -4px 20px rgba(0,0,0,0.1)" }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            {[{ id: "stocks", label: "Stocks", icon: I.box, badge: stockAlertCount+pendingSortiesCount }, { id: "recettes", label: "Recettes", icon: I.box }, { id: "rentabilite", label: "Rentabilité", icon: I.euro }, { id: "couts", label: "Coûts & marges", icon: I.euro }, { id: "ventes", label: "Ventes", icon: I.orders }, { id: "orders", label: "Commandes", icon: I.orders }, { id: "finances", label: "Finances", icon: I.euro }, { id: "settings", label: "Paramètres", icon: I.settings }].map(item => (
+            {[{ id: "pointage", label: "Pointage", icon: I.clock }, { id: "stocks", label: "Stocks", icon: I.box, badge: stockAlertCount+pendingSortiesCount }, { id: "recettes", label: "Recettes", icon: I.box }, { id: "rentabilite", label: "Rentabilité", icon: I.euro }, { id: "couts", label: "Coûts & marges", icon: I.euro }, { id: "ventes", label: "Ventes", icon: I.orders }, { id: "orders", label: "Commandes", icon: I.orders }, { id: "finances", label: "Finances", icon: I.euro }, { id: "settings", label: "Paramètres", icon: I.settings }].map(item => (
               <button key={item.id} onClick={() => { setSection(item.id); setShowMobileMenu(false); }} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", borderRadius: 10, border: "none", cursor: "pointer", background: effectiveSection === item.id ? t.primary + "12" : "transparent", color: effectiveSection === item.id ? t.primary : t.text, fontSize: 14, fontWeight: 500, fontFamily: F, textAlign: "left", width: "100%" }}>
                 {item.icon}{item.label}
               </button>
@@ -737,7 +750,7 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
         </div>
       )}
 
-      {showModal && <TaskModal onClose={() => setShowModal(false)} onSave={addTask} t={t} defaultDate={viewDate !== "overdue" ? viewDate : TODAY} employees={employees} categories={catNames} templates={tmpl} />}
+      {showModal && <TaskModal onClose={() => setShowModal(false)} onSave={addTask} t={t} defaultDate={viewDate !== "overdue" ? viewDate : TODAY} employees={employesActifs} categories={catNames} templates={tmpl} />}
 
       {showTemplatesEditor && <Suspense fallback={<Loading />}><TaskTemplatesModule t={t} F={F} templates={templates} categories={catNames} onAdd={addTemplate} onUpdate={updateTemplate} onDelete={deleteTemplate} onClose={() => setShowTemplatesEditor(false)} /></Suspense>}
 
@@ -808,7 +821,7 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
                             onChange={e => { setTemplateAssignments(prev => prev.map((a, i) => i === globalIdx ? {...a, assignee: e.target.value} : a)); setEditingTemplateIdx(null); }}
                             onBlur={() => setEditingTemplateIdx(null)}
                             style={{ fontSize:13, fontWeight:700, padding:"4px 8px", borderRadius:8, border:`1.5px solid ${colors[creneau]}`, fontFamily:F, color:t.text, background:t.surface, outline:"none", cursor:"pointer" }}>
-                            {empOptions.map(u => <option key={u.name} value={u.name}>{u.name}</option>)}
+                            {empOptions.filter(u => estActif(u) || u.name === task.assignee).map(u => <option key={u.name} value={u.name}>{u.name}</option>)}
                           </select>
                         ) : (
                           <button onClick={() => setEditingTemplateIdx(globalIdx)}
@@ -845,7 +858,7 @@ export default function RestoApp({ authUser, initialTheme, onLogout }) {
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
               <div><label style={{ fontSize: 13, fontWeight: 600, color: t.textMuted, marginBottom: 6, display: "block", fontFamily: F }}>Intitulé</label><input value={etTitle} onChange={e => setEtTitle(e.target.value)} style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: `1px solid ${t.border}`, fontSize: 14, fontFamily: F, background: t.surface, color: t.text, outline: "none" }} /></div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                <div><label style={{ fontSize: 13, fontWeight: 600, color: t.textMuted, marginBottom: 6, display: "block", fontFamily: F }}>Assigné à</label><select value={etAssignee} onChange={e => setEtAssignee(e.target.value)} style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: `1px solid ${t.border}`, fontSize: 14, fontFamily: F, background: t.surface, color: t.text, outline: "none", cursor: "pointer" }}>{employees.map(e => <option key={e.name}>{e.name}</option>)}</select></div>
+                <div><label style={{ fontSize: 13, fontWeight: 600, color: t.textMuted, marginBottom: 6, display: "block", fontFamily: F }}>Assigné à</label><select value={etAssignee} onChange={e => setEtAssignee(e.target.value)} style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: `1px solid ${t.border}`, fontSize: 14, fontFamily: F, background: t.surface, color: t.text, outline: "none", cursor: "pointer" }}>{employees.filter(e => estActif(e) || e.name === etAssignee).map(e => <option key={e.name}>{e.name}</option>)}</select></div>
                 <div><label style={{ fontSize: 13, fontWeight: 600, color: t.textMuted, marginBottom: 6, display: "block", fontFamily: F }}>Date prévue</label><input type="date" value={etDueDate} onChange={e => setEtDueDate(e.target.value)} style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: `1px solid ${t.border}`, fontSize: 14, fontFamily: F, background: t.surface, color: t.text, outline: "none", cursor: "pointer" }} /></div>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>

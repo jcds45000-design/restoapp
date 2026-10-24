@@ -24,6 +24,9 @@ supabase_migration3_stock.sql
 # Captures et artefacts de vérification locale
 .verif*/
 
+# Manuels HTML générés par Archify : 1,7 Mo régénérables en une commande, transmis directement
+docs/manuels/
+
 # Doc d'exploitation : infos internes de passation, ne pas publier (dépôt public)
 docs/EXPLOITATION.md
 
@@ -36,6 +39,7 @@ docs/PLAN-MIGRATION.md
 docs/AUDIT-SCHEMA-*.md
 docs/RAPPORT-PHASE0.md
 docs/RAPPORT-PHASE1.md
+docs/SPEC-FILS-2026-09-29.md
 supabase_migration8_phase1_couts.sql
 supabase_migration8b_correctif_trigger.sql
 supabase_migration8c_trigger_packaging.sql

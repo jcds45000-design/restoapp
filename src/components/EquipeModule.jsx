@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import { I } from '../lib/icons';
 import { TODAY, fmt, F, Badge } from '../lib/foundation';
 import { ROLE_LABELS } from '../lib/permissions';
+import { issueSuppressionSalarie, estActif, dateFinParDefaut, anciensSalaries, codePinValide, codePinFaible, messageErreurPin } from '../lib/users';
 
 // migrationActive : vrai quand la migration 7 (rôles/permissions) est appliquée en base ;
 // le sélecteur de rôle applicatif n'apparaît qu'à ce moment-là.
@@ -11,6 +12,13 @@ const EquipeModule = ({ t, employees, setUsersData, isMobile, migrationActive = 
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingEmp, setEditingEmp] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  // Code de pointage de la borne : saisi ici, jamais relu ensuite (definir_pin, migration 10).
+  const [ePin, setEPin] = useState("");
+  const [ePinMsg, setEPinMsg] = useState(null);
+  const [ePinEnCours, setEPinEnCours] = useState(false);
+  const [finContrat, setFinContrat] = useState(false);
+  const [finDate, setFinDate] = useState(TODAY);
+  const [voirAnciens, setVoirAnciens] = useState(false);
 
   // Add form
   const [aName, setAName] = useState("");
@@ -57,7 +65,7 @@ const EquipeModule = ({ t, employees, setUsersData, isMobile, migrationActive = 
     setETel(emp.tel || ""); setEEmail(emp.email || ""); setEDate(emp.dateEntree || "");
     setEContrat(emp.contrat || "CDI"); setEDateFin(emp.dateFin || "");
     setEAppRole(emp.appRole || (emp.role === "gerant" ? "admin" : "employe"));
-    setConfirmDelete(false);
+    setConfirmDelete(false); setFinContrat(false);
     setEditingEmp(emp);
   };
 
@@ -95,13 +103,73 @@ const EquipeModule = ({ t, employees, setUsersData, isMobile, migrationActive = 
     setEditingEmp(null); setECreateAccount(false); setEPassword(""); setEAccountMsg(null);
   };
 
-  const deleteEmp = () => {
+  // Attribution du code de pointage. Le code n'est lisible qu'ici, une seule fois :
+  // la base n'en garde qu'une empreinte. En cas d'oubli, on en attribue un autre.
+  const definirCodePointage = async () => {
+    if (!editingEmp?._uuid || !codePinValide(ePin) || ePinEnCours) return;
+    setEPinEnCours(true);
+    setEPinMsg(null);
+    const { error } = await supabase.rpc('definir_pin', { p_employee: editingEmp._uuid, p_pin: ePin });
+    setEPinEnCours(false);
+    if (error) { setEPinMsg({ ok: false, msg: messageErreurPin(error.message) }); return; }
+    setEPinMsg({ ok: true, msg: `Code ${ePin} enregistré pour ${editingEmp.name}. Note-le et donne-le lui : il ne sera plus jamais affiché.` });
+    setUsersData(prev => prev.map(u => u.id === editingEmp.id ? { ...u, aUnCode: true } : u));
+    setEditingEmp(prev => (prev ? { ...prev, aUnCode: true } : prev));
+    setEPin("");
+  };
+
+  const deleteEmp = async () => {
     if (!editingEmp) return;
-    setUsersData(prev => prev.filter(u => u.id !== editingEmp.id));
     if (editingEmp._uuid) {
-      supabase.from('employees').delete().eq('id', editingEmp._uuid).then(({ error }) => { if (error) alert('Erreur Supabase: ' + error.message); });
+      // On attend la base AVANT de toucher à l'écran : sinon la fiche disparaît puis revient.
+      const { error } = await supabase.from('employees').delete().eq('id', editingEmp._uuid);
+      const issue = issueSuppressionSalarie(error);
+      if (issue === 'erreur') { alert('Erreur Supabase: ' + error.message); return; }
+      if (issue === 'desactiver') {
+        const { error: errDesac } = await supabase.from('employees')
+          .update({ active: false, date_fin: editingEmp.dateFin || TODAY })
+          .eq('id', editingEmp._uuid);
+        if (errDesac) { alert('Erreur Supabase: ' + errDesac.message); return; }
+        setUsersData(prev => prev.map(u => u.id === editingEmp.id ? { ...u, active: false, dateFin: u.dateFin || TODAY } : u));
+        alert(`${editingEmp.name} a des heures pointées : la fiche ne peut pas être supprimée, elle passe dans les anciens salariés. Ses heures restent dans le récap.`);
+        setEditingEmp(null); setConfirmDelete(false);
+        return;
+      }
     }
-    setEditingEmp(null);
+    setUsersData(prev => prev.filter(u => u.id !== editingEmp.id));
+    setEditingEmp(null); setConfirmDelete(false);
+  };
+
+  // Fin de contrat : la fiche passe dans les anciens salariés (plus de borne, plus de droits
+  // dans l'appli), ses heures restent dans le récap. Réversible avec « Réactiver ».
+  // Jamais pour un gérant ou un admin : il se couperait l'accès à l'appli.
+  const peutTerminer = (emp) => !!emp?._uuid && emp.role !== "gerant" && emp.appRole !== "admin";
+
+  const ouvrirFinContrat = (emp) => {
+    openEdit(emp);
+    setFinDate(dateFinParDefaut(emp.dateFin, TODAY));
+    setFinContrat(true);
+  };
+
+  const terminerContrat = async () => {
+    if (!peutTerminer(editingEmp) || !finDate) return;
+    const { error } = await supabase.from('employees')
+      .update({ active: false, date_fin: finDate })
+      .eq('id', editingEmp._uuid);
+    if (error) { alert('Erreur Supabase: ' + error.message); return; }
+    setUsersData(prev => prev.map(u => u.id === editingEmp.id ? { ...u, active: false, dateFin: finDate } : u));
+    setEditingEmp(null); setFinContrat(false);
+  };
+
+  const reactiver = async (emp) => {
+    // Un CDI repart sans date de fin : le récap exclut les semaines qui suivent date_fin.
+    // Un CDD garde l'ancienne date, la fiche s'affiche « CDD expiré » jusqu'à la nouvelle.
+    const dateFin = emp.contrat === "CDD" ? emp.dateFin : "";
+    const { error } = await supabase.from('employees').update({ active: true, date_fin: dateFin || null }).eq('id', emp._uuid);
+    if (error) { alert('Erreur Supabase: ' + error.message); return; }
+    setUsersData(prev => prev.map(u => u.id === emp.id ? { ...u, active: true, dateFin } : u));
+    // On rouvre la fiche : le contrat d'une reprise est presque toujours à mettre à jour.
+    openEdit({ ...emp, active: true, dateFin });
   };
 
   const addEmp = async () => {
@@ -159,7 +227,10 @@ const EquipeModule = ({ t, employees, setUsersData, isMobile, migrationActive = 
   };
 
   // Alerte CDD proches
-  const cddAlerts = employees.filter(emp => emp.contrat === "CDD" && emp.dateFin).map(emp => ({ ...emp, days: daysRemaining(emp.dateFin) })).filter(emp => emp.days !== null && emp.days <= 30).sort((a, b) => a.days - b.days);
+  // Un salarié désactivé garde ses présences en base mais ne s'affiche plus ici.
+  const actifs = employees.filter(estActif);
+  const anciens = anciensSalaries(employees);
+  const cddAlerts = actifs.filter(emp => emp.contrat === "CDD" && emp.dateFin).map(emp => ({ ...emp, days: daysRemaining(emp.dateFin) })).filter(emp => emp.days !== null && emp.days <= 30).sort((a, b) => a.days - b.days);
 
   return (
     <div>
@@ -169,13 +240,19 @@ const EquipeModule = ({ t, employees, setUsersData, isMobile, migrationActive = 
           <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 10, display: "flex", alignItems: "center", gap: 8 }}>{I.warning} Contrats CDD à surveiller</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {cddAlerts.map(emp => (
-              <div key={emp.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", borderRadius: 8, background: t.surface, border: `1px solid ${emp.days <= 15 ? t.danger + "30" : t.warning + "30"}` }}>
+              <div key={emp.id} style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 10, padding: "8px 12px", borderRadius: 8, background: t.surface, border: `1px solid ${emp.days <= 15 ? t.danger + "30" : t.warning + "30"}` }}>
                 <div style={{ width: 30, height: 30, borderRadius: 8, background: (emp.days <= 15 ? t.danger : t.warning) + "18", color: emp.days <= 15 ? t.danger : t.warning, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 12 }}>{emp.initials}</div>
                 <div style={{ flex: 1 }}>
                   <span style={{ fontWeight: 600 }}>{emp.name}</span>
                   <span style={{ color: t.textMuted, fontSize: 13 }}> · {emp.poste}</span>
                 </div>
                 <span style={{ fontSize: 13, fontWeight: 700, color: emp.days <= 15 ? t.danger : t.warning }}>{emp.days < 0 ? "Expiré" : emp.days === 0 ? "Aujourd'hui" : `${emp.days} jour${emp.days > 1 ? "s" : ""}`}</span>
+                {emp.days < 0 && (
+                  <div style={{ display: "flex", gap: 6, justifyContent: "flex-end", width: isMobile ? "100%" : "auto" }}>
+                    <button onClick={() => openEdit(emp)} style={{ padding: "6px 10px", borderRadius: 8, border: `1px solid ${t.primary}40`, background: t.surface, color: t.primary, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: F }}>Renouveler</button>
+                    {peutTerminer(emp) && <button onClick={() => ouvrirFinContrat(emp)} style={{ padding: "6px 10px", borderRadius: 8, border: `1px solid ${t.border}`, background: t.surface, color: t.text, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: F }}>Fin de contrat</button>}
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -184,13 +261,13 @@ const EquipeModule = ({ t, employees, setUsersData, isMobile, migrationActive = 
 
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 10 }}>
-        <div style={{ fontSize: 14, color: t.textMuted, fontFamily: F }}>{employees.length} employé{employees.length > 1 ? "s" : ""}</div>
+        <div style={{ fontSize: 14, color: t.textMuted, fontFamily: F }}>{actifs.length} employé{actifs.length > 1 ? "s" : ""}</div>
         <button onClick={() => setShowAddModal(true)} style={{ display: "flex", alignItems: "center", gap: 6, padding: "10px 18px", borderRadius: 10, border: "none", background: t.primary, color: "#fff", fontWeight: 600, fontSize: 14, cursor: "pointer", fontFamily: F }}>{I.plus} Ajouter un employé</button>
       </div>
 
       {/* Employee list */}
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 12 }}>
-        {employees.map(emp => (
+        {actifs.map(emp => (
           <div key={emp.id} onClick={() => openEdit(emp)} style={{ background: t.surface, borderRadius: 14, border: `1px solid ${t.border}`, padding: "18px 20px", cursor: "pointer", transition: "box-shadow 0.2s" }} onMouseEnter={e => e.currentTarget.style.boxShadow = "0 4px 20px rgba(0,0,0,0.06)"} onMouseLeave={e => e.currentTarget.style.boxShadow = "none"}>
             <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
               <div style={{ width: 44, height: 44, borderRadius: 12, background: t.primary + "18", color: t.primary, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 16, flexShrink: 0 }}>{emp.initials}</div>
@@ -209,7 +286,31 @@ const EquipeModule = ({ t, employees, setUsersData, isMobile, migrationActive = 
         ))}
       </div>
 
-      {employees.length === 0 && <div style={{ textAlign: "center", padding: 40, color: t.textMuted, fontSize: 14 }}>Aucun employé. Cliquez sur "Ajouter un employé" pour commencer.</div>}
+      {actifs.length === 0 && <div style={{ textAlign: "center", padding: 40, color: t.textMuted, fontSize: 14 }}>Aucun employé. Cliquez sur "Ajouter un employé" pour commencer.</div>}
+
+      {/* Anciens salariés : repliés, jamais effacés, réactivables en cas de reprise */}
+      {anciens.length > 0 && (
+        <div style={{ marginTop: 24 }}>
+          <button onClick={() => setVoirAnciens(v => !v)} style={{ display: "flex", alignItems: "center", gap: 8, background: "none", border: "none", cursor: "pointer", padding: "6px 0", fontSize: 14, fontWeight: 600, color: t.textMuted, fontFamily: F }}>
+            <span style={{ display: "inline-flex", transform: voirAnciens ? "rotate(90deg)" : "none", transition: "transform 0.15s" }}>{I.chevron}</span>
+            Anciens salariés ({anciens.length})
+          </button>
+          {voirAnciens && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 10 }}>
+              {anciens.map(emp => (
+                <div key={emp.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderRadius: 12, background: t.surface, border: `1px solid ${t.border}` }}>
+                  <div style={{ width: 36, height: 36, borderRadius: 10, background: t.border, color: t.textMuted, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 14, flexShrink: 0 }}>{emp.initials}</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 15, fontWeight: 600 }}>{emp.name}</div>
+                    <div style={{ fontSize: 12, color: t.textMuted }}>{emp.poste} · {emp.dateFin ? `Fin le ${fmt(emp.dateFin)} ${emp.dateFin.slice(0, 4)}` : "Date de fin non renseignée"}</div>
+                  </div>
+                  <button onClick={() => reactiver(emp)} style={{ padding: "8px 12px", borderRadius: 8, border: `1px solid ${t.primary}40`, background: t.surface, color: t.primary, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: F, flexShrink: 0 }}>Réactiver</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Add modal */}
       {showAddModal && (
@@ -273,11 +374,11 @@ const EquipeModule = ({ t, employees, setUsersData, isMobile, migrationActive = 
 
       {/* Edit modal */}
       {editingEmp && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={() => { setEditingEmp(null); setConfirmDelete(false); }}>
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={() => { setEditingEmp(null); setConfirmDelete(false); setEPin(""); setEPinMsg(null); }}>
           <div style={{ background: t.surface, borderRadius: 16, padding: 28, width: 480, maxWidth: "92vw", boxShadow: "0 20px 60px rgba(0,0,0,0.15)", maxHeight: "90vh", overflowY: "auto" }} onClick={e => e.stopPropagation()}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
               <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0, fontFamily: F }}>Modifier l'employé</h2>
-              <button onClick={() => { setEditingEmp(null); setConfirmDelete(false); }} style={{ background: "none", border: "none", cursor: "pointer", color: t.textMuted, padding: 4 }}>{I.x}</button>
+              <button onClick={() => { setEditingEmp(null); setConfirmDelete(false); setEPin(""); setEPinMsg(null); }} style={{ background: "none", border: "none", cursor: "pointer", color: t.textMuted, padding: 4 }}>{I.x}</button>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
@@ -324,15 +425,71 @@ const EquipeModule = ({ t, employees, setUsersData, isMobile, migrationActive = 
               {eAccountMsg && <div style={{ marginTop: 8, fontSize: 12, fontWeight: 500, color: eAccountMsg.ok ? t.success : t.danger, fontFamily: F }}>{eAccountMsg.msg}</div>}
             </div>
 
-            <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
+            {/* Code de pointage sur la borne */}
+            <div style={{ borderTop: `1px solid ${t.border}`, paddingTop: 14, marginTop: 14 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: t.text, fontFamily: F, marginBottom: 6 }}>Code de pointage sur la borne</div>
+              {!editingEmp._uuid ? (
+                <div style={{ fontSize: 12, color: t.textMuted, fontFamily: F, lineHeight: 1.45 }}>Cette fiche n’est pas enregistrée en base : elle ne peut pas recevoir de code.</div>
+              ) : (
+                <>
+                  <div style={{ fontSize: 12, color: editingEmp.aUnCode ? t.textMuted : t.warning, fontFamily: F, marginBottom: 10, lineHeight: 1.45 }}>
+                    {editingEmp.aUnCode
+                      ? `${editingEmp.name} a déjà un code. En saisir un nouveau remplace l’ancien.`
+                      : `${editingEmp.name} n’a pas encore de code : sans code, impossible de pointer sur la borne.`}
+                  </div>
+                  <div style={{ display: "flex", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
+                    <input
+                      value={ePin}
+                      onChange={e => { setEPin(e.target.value.replace(/\D/g, '').slice(0, 6)); setEPinMsg(null); }}
+                      inputMode="numeric"
+                      autoComplete="off"
+                      placeholder="4 à 6 chiffres"
+                      aria-label="Nouveau code de pointage"
+                      style={{ ...sel, width: 150, letterSpacing: 3, fontWeight: 600 }}
+                    />
+                    <button
+                      onClick={definirCodePointage}
+                      disabled={!codePinValide(ePin) || ePinEnCours}
+                      style={{ padding: "10px 16px", borderRadius: 8, border: "none", background: codePinValide(ePin) && !ePinEnCours ? t.primary : t.border, color: codePinValide(ePin) && !ePinEnCours ? "#fff" : t.textMuted, fontSize: 14, fontWeight: 600, cursor: codePinValide(ePin) && !ePinEnCours ? "pointer" : "default", fontFamily: F }}
+                    >{ePinEnCours ? "Enregistrement…" : "Enregistrer le code"}</button>
+                  </div>
+                  {codePinFaible(ePin) && (
+                    <div style={{ marginTop: 8, fontSize: 12, fontWeight: 500, color: t.warning, fontFamily: F, lineHeight: 1.45 }}>Ce code est facile à deviner : un collègue pourrait pointer à la place de {editingEmp.name}. Tu peux quand même l’enregistrer.</div>
+                  )}
+                  <div style={{ marginTop: 8, fontSize: 12, color: t.textMuted, fontFamily: F, lineHeight: 1.45 }}>Le code n’est jamais relu ensuite, même par toi : en cas d’oubli, attribue-en un nouveau. Il doit être différent de celui de tous les autres salariés, y compris les anciens.</div>
+                  {ePinMsg && <div style={{ marginTop: 8, fontSize: 12, fontWeight: 600, color: ePinMsg.ok ? t.success : t.danger, fontFamily: F, lineHeight: 1.45 }}>{ePinMsg.msg}</div>}
+                </>
+              )}
+            </div>
+
+            {finContrat && (
+              <div style={{ marginTop: 16, padding: 14, borderRadius: 10, background: t.warning + "10", border: `1px solid ${t.warning}40` }}>
+                <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 6, fontFamily: F }}>Fin de contrat de {editingEmp.name}</div>
+                <div style={{ fontSize: 13, color: t.textMuted, marginBottom: 10, fontFamily: F, lineHeight: 1.45 }}>La fiche passe dans les anciens salariés : plus de pointage sur la borne, plus d'accès à l'appli, plus de planning après cette date. Ses heures restent dans le récap. Réactivable en cas de reprise.</div>
+                <label style={{ fontSize: 12, fontWeight: 600, color: t.textMuted, marginBottom: 6, display: "block" }}>Dernier jour du contrat</label>
+                <input value={finDate} onChange={e => setFinDate(e.target.value)} type="date" style={sel} />
+                <div style={{ display: "flex", gap: 8, marginTop: 12, justifyContent: "flex-end", flexWrap: "wrap" }}>
+                  <button onClick={() => setFinContrat(false)} style={{ padding: "10px 14px", borderRadius: 8, border: `1px solid ${t.border}`, background: t.surface, color: t.textMuted, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: F }}>Annuler</button>
+                  <button onClick={terminerContrat} disabled={!finDate} style={{ padding: "10px 14px", borderRadius: 8, border: "none", background: finDate ? t.warning : t.border, color: "#fff", fontSize: 13, fontWeight: 600, cursor: finDate ? "pointer" : "default", fontFamily: F }}>Confirmer la fin de contrat</button>
+                </div>
+              </div>
+            )}
+
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 16 }}>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
               {!confirmDelete ? (
                 <button onClick={() => setConfirmDelete(true)} style={{ padding: "10px 14px", borderRadius: 8, border: `1px solid ${t.danger}30`, background: t.danger + "08", color: t.danger, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: F, display: "flex", alignItems: "center", gap: 6 }}>{I.trash} Supprimer</button>
               ) : (
                 <button onClick={deleteEmp} style={{ padding: "10px 14px", borderRadius: 8, border: "none", background: t.danger, color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: F }}>Confirmer</button>
               )}
-              <div style={{ flex: 1 }} />
-              <button onClick={() => { setEditingEmp(null); setConfirmDelete(false); setECreateAccount(false); setEPassword(""); setEAccountMsg(null); }} style={{ padding: "10px 16px", borderRadius: 8, border: `1px solid ${t.border}`, background: t.surface, color: t.textMuted, fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: F }}>Annuler</button>
+              {peutTerminer(editingEmp) && !finContrat && (
+                <button onClick={() => { setFinDate(dateFinParDefaut(editingEmp.dateFin, TODAY)); setFinContrat(true); setConfirmDelete(false); }} style={{ padding: "10px 14px", borderRadius: 8, border: `1px solid ${t.border}`, background: t.surface, color: t.text, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: F }}>Fin de contrat</button>
+              )}
+              </div>
+              <div style={{ display: "flex", gap: 10, marginLeft: "auto" }}>
+              <button onClick={() => { setEditingEmp(null); setConfirmDelete(false); setFinContrat(false); setECreateAccount(false); setEPassword(""); setEAccountMsg(null); setEPin(""); setEPinMsg(null); }} style={{ padding: "10px 16px", borderRadius: 8, border: `1px solid ${t.border}`, background: t.surface, color: t.textMuted, fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: F }}>Annuler</button>
               <button onClick={saveEdit} style={{ padding: "10px 16px", borderRadius: 8, border: "none", background: eName.trim() ? t.primary : t.border, color: eName.trim() ? "#fff" : t.textMuted, fontSize: 14, fontWeight: 600, cursor: eName.trim() ? "pointer" : "default", fontFamily: F }}>Enregistrer</button>
+              </div>
             </div>
           </div>
         </div>

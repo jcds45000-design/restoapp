@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase';
 
 import { I } from '../lib/icons';
 import { TODAY, WEEK_START, fmt, fmtShort, addDays, getWeekDays, getDayName, calcHours, F, Badge } from '../lib/foundation';
+import { visibleSurPeriode } from '../lib/users';
 
 const PlanningModule = ({ t, schedule, setSchedule, pointage, isGerant, currentUserName, employees }) => {
   const [planView, setPlanView] = useState("week"); // week | month | hours
@@ -10,6 +11,9 @@ const PlanningModule = ({ t, schedule, setSchedule, pointage, isGerant, currentU
   const [shiftModal, setShiftModal] = useState(null); // { empName, date }
   const [dupConfirm, setDupConfirm] = useState(false);
   const days = getWeekDays(weekStart);
+  // Un ancien salarié n'apparaît que sur les périodes où il travaillait encore (ou s'il y a un créneau).
+  const equipeSur = (debut, fin) => employees.filter(emp => visibleSurPeriode(emp, debut, fin, schedule[emp.name]));
+  const equipeSemaine = equipeSur(days[0], days[6]);
 
   // Predefined shift templates
   const shiftPresets = [
@@ -42,7 +46,7 @@ const PlanningModule = ({ t, schedule, setSchedule, pointage, isGerant, currentU
   const duplicateWeek = async () => {
     const nextWeekDays = getWeekDays(addDays(weekStart, 7));
     const rows = [];
-    employees.forEach(emp => {
+    equipeSur(nextWeekDays[0], nextWeekDays[6]).forEach(emp => {
       const empSched = schedule[emp.name] || {};
       days.forEach((d, i) => {
         if (empSched[d]) rows.push({ employee_name: emp.name, date: nextWeekDays[i], shift: empSched[d], updated_at: new Date().toISOString() });
@@ -100,7 +104,7 @@ const PlanningModule = ({ t, schedule, setSchedule, pointage, isGerant, currentU
           </tr>
         </thead>
         <tbody>
-          {employees.map(emp => {
+          {equipeSemaine.map(emp => {
             const empSchedule = schedule[emp.name] || {};
             let weekTotal = 0;
             return (
@@ -186,7 +190,7 @@ const PlanningModule = ({ t, schedule, setSchedule, pointage, isGerant, currentU
             </tr>
           </thead>
           <tbody>
-            {employees.map(emp => {
+            {equipeSur(monthDays[0], monthDays[monthDays.length - 1]).map(emp => {
               const empSchedule = schedule[emp.name] || {};
               return (
                 <tr key={emp.name}>
@@ -233,7 +237,7 @@ const PlanningModule = ({ t, schedule, setSchedule, pointage, isGerant, currentU
             </tr>
           </thead>
           <tbody>
-            {employees.map(emp => {
+            {equipeSemaine.map(emp => {
               const empSchedule = schedule[emp.name] || {};
               const empPointage = pointage[emp.name] || {};
               let planH = 0, realH = 0;
@@ -272,7 +276,7 @@ const PlanningModule = ({ t, schedule, setSchedule, pointage, isGerant, currentU
                 <td style={{ padding: "14px 12px" }}></td>
                 <td style={{ padding: "14px 12px" }}></td>
                 <td style={{ padding: "14px 12px", textAlign: "center", fontWeight: 700, fontSize: 16, color: t.primary }}>
-                  {employees.reduce((sum, emp) => {
+                  {equipeSemaine.reduce((sum, emp) => {
                     const empSchedule = schedule[emp.name] || {};
                     let h = 0; days.forEach(d => h += calcHours(empSchedule[d]));
                     return sum + h * emp.tauxH;
@@ -294,7 +298,7 @@ const PlanningModule = ({ t, schedule, setSchedule, pointage, isGerant, currentU
         <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0, fontFamily: F }}>Pointage du jour — {fmt(TODAY)}</h3>
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {employees.map(emp => {
+        {equipeSur(TODAY, TODAY).map(emp => {
           const shift = (schedule[emp.name] || {})[TODAY];
           const isRest = !shift || shift === "repos";
           const ptg = (pointage[emp.name] || {})[TODAY];
